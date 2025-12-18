@@ -172,7 +172,6 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 			}
 			needFlush = true
 		case message := <-messages:
-			c.logger.Trace(fmt.Sprintf("%s %s", message.RoutingKey, string(message.Body)))
 			batch = append(batch, message)
 		}
 		if len(batch) >= int(c.pageSize) || needFlush && len(batch) > 0 {
