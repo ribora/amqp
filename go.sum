@@ -23,8 +23,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 gitlab.com/gorib/failure v0.0.0-20260205065720-0f111943a8ea h1:Ivy3ZhJ43DBYKYCVq7ybuh29xJhQUlHEHOCr/rqkVm4=
 gitlab.com/gorib/failure v0.0.0-20260205065720-0f111943a8ea/go.mod h1:G4h/bpjuzjrfUUXm+p3K8mixVhuvEyTJ3fx/Ayy9Ylc=
-gitlab.com/gorib/pry v0.0.0-20260205070212-a44c72f5e240 h1:cSNuYGMAsHpKtnMtxOg9KnvC1EmHt3X4d0IAII4LBYU=
-gitlab.com/gorib/pry v0.0.0-20260205070212-a44c72f5e240/go.mod h1:2ZhtNMyjoPKWCrZX5NLJlbMiJHBEUJg8Zuhgl1TcHpc=
+gitlab.com/gorib/pry v0.0.0-20260205083916-dab009c69462 h1:YeuEXtIlOIiAd018oAAKMqwwuM0xh3BnM73w8NgqyZE=
+gitlab.com/gorib/pry v0.0.0-20260205083916-dab009c69462/go.mod h1:2ZhtNMyjoPKWCrZX5NLJlbMiJHBEUJg8Zuhgl1TcHpc=
 gitlab.com/gorib/session v0.0.0-20250224141908-df66ea5a990f h1:OlcLsiOC/SDcuH75HhcRkOvVD3FYi8nWD9ghvoZMAJw=
 gitlab.com/gorib/session v0.0.0-20250224141908-df66ea5a990f/go.mod h1:cWx2sy2oeMgllJhzMRvv8TkJnUpqK1gvmUmXQjWJfXA=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
