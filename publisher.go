@@ -37,7 +37,7 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 	} else {
 		payload, err = json.Marshal(document)
 		if err != nil {
-			return fmt.Errorf("rabbit payload: %v", err)
+			return fmt.Errorf("rabbit payload: %w", err)
 		}
 	}
 	message := amqp.Publishing{

@@ -3,13 +3,13 @@ package amqp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"gitlab.com/gorib/amqp/model"
+	"gitlab.com/gorib/failure"
 	"gitlab.com/gorib/pry"
 	"gitlab.com/gorib/session"
 )
@@ -224,13 +224,8 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 
 func (c *consumer) proceed(h func() error) (err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			if err == nil {
-				var ok bool
-				if err, ok = r.(error); !ok {
-					err = fmt.Errorf("%v", r)
-				}
-			}
+		if r := recover(); r != nil && err == nil {
+			err = failure.Panic(r)
 		}
 	}()
 	return h()

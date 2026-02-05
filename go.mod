@@ -5,7 +5,8 @@ go 1.25.0
 require (
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/stretchr/testify v1.11.1
-	gitlab.com/gorib/pry v0.0.0-20250224143323-d269032b7208
+	gitlab.com/gorib/failure v0.0.0-20260205065720-0f111943a8ea
+	gitlab.com/gorib/pry v0.0.0-20260205070212-a44c72f5e240
 	gitlab.com/gorib/session v0.0.0-20250224141908-df66ea5a990f
 )
 

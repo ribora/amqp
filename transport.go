@@ -34,13 +34,13 @@ type amqpChannel interface {
 func newTransport(dsn string) (*transport, error) {
 	connection, err := amqp.Dial(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("rabbit conn: %v", err)
+		return nil, fmt.Errorf("rabbit conn: %w", err)
 	}
 
 	channel, err := connection.Channel()
 	if err != nil {
 		_ = connection.Close()
-		return nil, fmt.Errorf("rabbit channel: %v", err)
+		return nil, fmt.Errorf("rabbit channel: %w", err)
 	}
 
 	return &transport{
@@ -57,7 +57,7 @@ type transport struct {
 func (t *transport) ExchangeDeclare(exchange string) error {
 	err := t.channel.ExchangeDeclare(exchange, "topic", true, false, false, false, nil)
 	if err != nil {
-		return fmt.Errorf("rabbit exchange: %v", err)
+		return fmt.Errorf("rabbit exchange: %w", err)
 	}
 	return nil
 }
@@ -65,16 +65,16 @@ func (t *transport) ExchangeDeclare(exchange string) error {
 func (t *transport) Consume(queue, routingKey, exchange string, prefetchCount uint16) (<-chan amqp.Delivery, error) {
 	q, err := t.channel.QueueDeclare(queue, true, false, false, false, nil)
 	if err != nil {
-		return nil, fmt.Errorf("topic queue: %v", err)
+		return nil, fmt.Errorf("topic queue: %w", err)
 	}
 	err = t.channel.QueueBind(q.Name, routingKey, exchange, false, nil)
 	if err != nil {
-		return nil, fmt.Errorf("topic bind: %v", err)
+		return nil, fmt.Errorf("topic bind: %w", err)
 	}
 	if prefetchCount > 1 {
 		err = t.channel.Qos(int(prefetchCount), 0, false)
 		if err != nil {
-			return nil, fmt.Errorf("qos: %v", err)
+			return nil, fmt.Errorf("qos: %w", err)
 		}
 	}
 	return t.channel.Consume(queue, "", false, false, false, false, nil)
