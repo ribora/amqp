@@ -90,8 +90,8 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		require.Error(t, cons.setFlushInterval(500*time.Millisecond))
-		require.Error(t, cons.setReconnectInterval(500*time.Millisecond))
+		require.Error(t, cons.SetFlushInterval(500*time.Millisecond))
+		require.Error(t, cons.SetReconnectInterval(500*time.Millisecond))
 	})
 
 	t.Run("InvalidConfig", func(t *testing.T) {
@@ -100,7 +100,7 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		require.NoError(t, cons.setExchange(""))
+		require.NoError(t, cons.SetExchange(""))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
 		require.ErrorContains(t, cons.Consume(context.Background()), "invalid consumer config")
 	})
@@ -222,7 +222,7 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		require.NoError(t, cons.setRoutingKey(""))
+		require.NoError(t, cons.SetRoutingKey(""))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
@@ -299,7 +299,7 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Hour),
 		)
 		require.NoError(t, err)
-		require.NoError(t, cons.setReconnectInterval(1*time.Second))
+		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			return nil
 		})
@@ -334,7 +334,7 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Hour),
 		)
 		require.NoError(t, err)
-		require.NoError(t, cons.setReconnectInterval(1*time.Second))
+		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 
 		done := make(chan struct{})
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
@@ -480,7 +480,7 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		require.NoError(t, cons.setReconnectInterval(time.Hour))
+		require.NoError(t, cons.SetReconnectInterval(time.Hour))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			require.Len(t, keys, 1)
 			require.Equal(t, "rk", keys[0])

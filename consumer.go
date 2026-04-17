@@ -23,25 +23,25 @@ func NewConsumer(dsn, exchange, queue, routingKey string, opts ...ConsumerOption
 		stop:            make(chan struct{}),
 		failsafeTimeout: 300 * time.Second,
 	}
-	if err := c.setDsn(dsn); err != nil {
+	if err := c.SetDsn(dsn); err != nil {
 		return nil, err
 	}
-	if err := c.setExchange(exchange); err != nil {
+	if err := c.SetExchange(exchange); err != nil {
 		return nil, err
 	}
-	if err := c.setQueue(queue); err != nil {
+	if err := c.SetQueue(queue); err != nil {
 		return nil, err
 	}
-	if err := c.setRoutingKey(routingKey); err != nil {
+	if err := c.SetRoutingKey(routingKey); err != nil {
 		return nil, err
 	}
-	if err := c.setExchangeKind(""); err != nil {
+	if err := c.SetExchangeKind(""); err != nil {
 		return nil, err
 	}
-	if err := c.setFlushInterval(5 * time.Second); err != nil {
+	if err := c.SetFlushInterval(5 * time.Second); err != nil {
 		return nil, err
 	}
-	if err := c.setPageSize(1); err != nil {
+	if err := c.SetPageSize(1); err != nil {
 		return nil, err
 	}
 
@@ -80,17 +80,17 @@ func (c *consumer) SetHandler(handler func(ctx context.Context, keys []string, d
 	return nil
 }
 
-func (c *consumer) setDsn(dsn string) error {
+func (c *consumer) SetDsn(dsn string) error {
 	c.dsn = dsn
 	return nil
 }
 
-func (c *consumer) setExchange(exchange string) error {
+func (c *consumer) SetExchange(exchange string) error {
 	c.exchange = exchange
 	return nil
 }
 
-func (c *consumer) setExchangeKind(kind string) error {
+func (c *consumer) SetExchangeKind(kind string) error {
 	if kind == "" {
 		kind = "topic"
 	}
@@ -98,12 +98,12 @@ func (c *consumer) setExchangeKind(kind string) error {
 	return nil
 }
 
-func (c *consumer) setQueue(queue string) error {
+func (c *consumer) SetQueue(queue string) error {
 	c.queue = queue
 	return nil
 }
 
-func (c *consumer) setRoutingKey(routingKey string) error {
+func (c *consumer) SetRoutingKey(routingKey string) error {
 	if routingKey == "" {
 		routingKey = "#"
 	}
@@ -111,7 +111,7 @@ func (c *consumer) setRoutingKey(routingKey string) error {
 	return nil
 }
 
-func (c *consumer) setPageSize(pageSize uint16) error {
+func (c *consumer) SetPageSize(pageSize uint16) error {
 	if pageSize == 0 {
 		pageSize = 1
 	}
@@ -119,7 +119,7 @@ func (c *consumer) setPageSize(pageSize uint16) error {
 	return nil
 }
 
-func (c *consumer) setFlushInterval(interval time.Duration) error {
+func (c *consumer) SetFlushInterval(interval time.Duration) error {
 	if interval < time.Second {
 		return errors.New("flush interval must be greater or equal than 1 second")
 	}
@@ -127,7 +127,7 @@ func (c *consumer) setFlushInterval(interval time.Duration) error {
 	return nil
 }
 
-func (c *consumer) setReconnectInterval(interval time.Duration) error {
+func (c *consumer) SetReconnectInterval(interval time.Duration) error {
 	if interval < time.Second {
 		return errors.New("reconnect interval must be greater or equal than 1 second")
 	}

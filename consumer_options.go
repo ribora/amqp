@@ -27,19 +27,19 @@ func WithConsumerFailsafeTimeout(timeout time.Duration) ConsumerOptions {
 
 func WithConsumerExchangeKind(kind string) ConsumerOptions {
 	return func(c *consumer) error {
-		return c.setExchangeKind(kind)
+		return c.SetExchangeKind(kind)
 	}
 }
 
 func WithConsumerPageSize(size uint16) ConsumerOptions {
 	return func(c *consumer) error {
-		return c.setPageSize(size)
+		return c.SetPageSize(size)
 	}
 }
 
 func WithConsumerFlushInterval(interval time.Duration) ConsumerOptions {
 	return func(c *consumer) error {
-		return c.setFlushInterval(interval)
+		return c.SetFlushInterval(interval)
 	}
 }
 
