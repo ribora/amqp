@@ -14,16 +14,33 @@ import (
 
 type EncodedMessage []byte
 
-func NewPublisher(dsn, exchange string) *publisher {
-	return &publisher{
-		dsn:      dsn,
-		exchange: exchange,
+type PublisherOptions func(*publisher) error
+
+func WithExchangeKind(kind string) PublisherOptions {
+	return func(p *publisher) error {
+		p.exchangeKind = kind
+		return nil
 	}
 }
 
+func NewPublisher(dsn, exchange string, opts ...PublisherOptions) (*publisher, error) {
+	p := &publisher{
+		dsn:          dsn,
+		exchange:     exchange,
+		exchangeKind: "topic",
+	}
+	for _, opt := range opts {
+		if err := opt(p); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
+}
+
 type publisher struct {
-	dsn      string
-	exchange string
+	dsn          string
+	exchange     string
+	exchangeKind string
 
 	tr       transportAPI
 	trLocker sync.Mutex
@@ -70,8 +87,12 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 	}
 	defer func() {
 		if err != nil {
-			_ = r.Close()
-			r.tr = nil
+			r.trLocker.Lock()
+			defer r.trLocker.Unlock()
+			if r.tr != nil {
+				_ = r.tr.Close()
+				r.tr = nil
+			}
 		}
 	}()
 
@@ -88,7 +109,7 @@ func (r *publisher) transport() (_ transportAPI, err error) {
 	if err != nil {
 		return nil, err
 	}
-	err = r.tr.ExchangeDeclare(r.exchange)
+	err = r.tr.ExchangeDeclare(r.exchange, r.exchangeKind)
 	return r.tr, err
 }
 

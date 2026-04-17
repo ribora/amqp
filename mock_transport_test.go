@@ -56,12 +56,12 @@ type mockTransport struct {
 	publishCallCnt int
 }
 
-func (f *mockTransport) ExchangeDeclare(exchange string) error {
+func (f *mockTransport) ExchangeDeclare(exchange, kind string) error {
 	f.exchangeDecls = append(f.exchangeDecls, exchange)
 	return f.exchangeErr
 }
 
-func (f *mockTransport) Consume(queue, routingKey, exchange string, prefetchCount uint16) (<-chan amqp.Delivery, error) {
+func (f *mockTransport) Consume(queue, routingKey, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
 	f.consumeArgs = append(f.consumeArgs, struct {
 		q, rk, ex string
 		prefetch  uint16

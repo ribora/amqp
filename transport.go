@@ -8,8 +8,8 @@ import (
 )
 
 type transportAPI interface {
-	ExchangeDeclare(exchange string) error
-	Consume(queue, routingKey, exchange string, prefetchCount uint16) (<-chan amqp.Delivery, error)
+	ExchangeDeclare(exchange, kind string) error
+	Consume(queue, routingKey, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error)
 	PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) error
 	Close() error
 }
@@ -54,16 +54,19 @@ type transport struct {
 	channel    amqpChannel
 }
 
-func (t *transport) ExchangeDeclare(exchange string) error {
-	err := t.channel.ExchangeDeclare(exchange, "topic", true, false, false, false, nil)
+func (t *transport) ExchangeDeclare(exchange, kind string) error {
+	if kind == "" {
+		kind = "topic"
+	}
+	err := t.channel.ExchangeDeclare(exchange, kind, true, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("rabbit exchange: %w", err)
 	}
 	return nil
 }
 
-func (t *transport) Consume(queue, routingKey, exchange string, prefetchCount uint16) (<-chan amqp.Delivery, error) {
-	q, err := t.channel.QueueDeclare(queue, true, false, false, false, nil)
+func (t *transport) Consume(queue, routingKey, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
+	q, err := t.channel.QueueDeclare(queue, true, false, false, false, args)
 	if err != nil {
 		return nil, fmt.Errorf("topic queue: %w", err)
 	}

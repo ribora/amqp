@@ -20,14 +20,16 @@ func TestPublisher(t *testing.T) {
 	}()
 
 	t.Run("WrongTransport", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
 
 		newTransportFunc = func(dsn string) (transportAPI, error) { return nil, errors.New("error") }
 		require.ErrorContains(t, pub.Publish(context.Background(), "id", "message"), "error")
 	})
 
 	t.Run("ExchangeDeclareFail", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
 
 		ft := &mockTransport{messages: make(chan amqp.Delivery, 10)}
 		newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
@@ -36,7 +38,9 @@ func TestPublisher(t *testing.T) {
 	})
 
 	t.Run("Object", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
+
 		ft := &mockTransport{}
 		newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
 
@@ -52,7 +56,9 @@ func TestPublisher(t *testing.T) {
 	})
 
 	t.Run("EncodedMessage", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
+
 		ft := &mockTransport{}
 		newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
 
@@ -64,28 +70,26 @@ func TestPublisher(t *testing.T) {
 	})
 
 	t.Run("ErrClosed", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
 
 		var calls int
 		ft := &mockTransport{}
 		newTransportFunc = func(dsn string) (transportAPI, error) { calls++; return ft, nil }
 
-		// Simulate ErrClosed on publish to force close+recreate on next call
 		ft.publishErrs = []error{amqp.ErrClosed, nil}
 
-		err := pub.Publish(context.Background(), "k3", map[string]int{"a": 1})
+		err = pub.Publish(context.Background(), "k3", map[string]int{"a": 1})
 		require.ErrorIs(t, err, amqp.ErrClosed)
 		require.True(t, ft.closed)
 
-		// second call should work and new transport requested
 		require.NoError(t, pub.Publish(context.Background(), "k4", map[string]int{"b": 2}))
-
-		// transport factory should have been called at least once
 		require.Equal(t, calls, 2)
 	})
 
 	t.Run("SessionHeaders", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
 
 		ft := &mockTransport{}
 		newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
@@ -110,25 +114,27 @@ func TestPublisher(t *testing.T) {
 	})
 
 	t.Run("MarshalError", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
+
 		ft := &mockTransport{}
 		newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
-		// json.Marshal fails for functions
+
 		type badFn = func()
-		err := pub.Publish(context.Background(), "k5", badFn(func() {}))
+		err = pub.Publish(context.Background(), "k5", badFn(func() {}))
 		require.ErrorContains(t, err, "rabbit payload:")
 		require.Len(t, ft.published, 0)
 	})
 
 	t.Run("CloseNilTransport", func(t *testing.T) {
-		pub := NewPublisher("amqp://", "ex")
+		pub, err := NewPublisher("amqp://", "ex")
+		require.NoError(t, err)
 		require.NoError(t, pub.Close())
 	})
 
 	t.Run("Cleanup", func(t *testing.T) {
 		ft := &mockTransport{}
 		newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
-		// Close should call underlying transport Close
 		pub := &publisher{dsn: "", exchange: "ex", tr: ft}
 		require.NoError(t, pub.Close())
 		require.True(t, ft.closed)

@@ -18,37 +18,49 @@ var (
 	retrySleep = time.Second
 )
 
-func NewConsumer(dsn, exchange, queue, routingKey string, pageSize uint16, flushInterval time.Duration, logger pry.Logger) (*consumer, error) {
+func NewConsumer(dsn, exchange, queue, routingKey string, opts ...ConsumerOptions) (*consumer, error) {
 	c := &consumer{
-		logger:          logger,
 		stop:            make(chan struct{}),
 		failsafeTimeout: 300 * time.Second,
 	}
-	if err := c.SetDsn(dsn); err != nil {
+	if err := c.setDsn(dsn); err != nil {
 		return nil, err
 	}
-	if err := c.SetExchange(exchange); err != nil {
+	if err := c.setExchange(exchange); err != nil {
 		return nil, err
 	}
-	if err := c.SetQueue(queue); err != nil {
+	if err := c.setQueue(queue); err != nil {
 		return nil, err
 	}
-	if err := c.SetRoutingKey(routingKey); err != nil {
+	if err := c.setRoutingKey(routingKey); err != nil {
 		return nil, err
 	}
-	if err := c.SetFlushInterval(flushInterval); err != nil {
+	if err := c.setExchangeKind(""); err != nil {
 		return nil, err
 	}
-	if err := c.SetPageSize(pageSize); err != nil {
+	if err := c.setFlushInterval(5 * time.Second); err != nil {
 		return nil, err
 	}
+	if err := c.setPageSize(1); err != nil {
+		return nil, err
+	}
+
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+
 	return c, nil
 }
 
 type consumer struct {
 	dsn             string
 	exchange        string
+	exchangeKind    string
+	dlxExchange     string
 	queue           string
+	queueArgs       amqp.Table
 	routingKey      string
 	pageSize        uint16
 	flushInterval   time.Duration
@@ -68,22 +80,30 @@ func (c *consumer) SetHandler(handler func(ctx context.Context, keys []string, d
 	return nil
 }
 
-func (c *consumer) SetDsn(dsn string) error {
+func (c *consumer) setDsn(dsn string) error {
 	c.dsn = dsn
 	return nil
 }
 
-func (c *consumer) SetExchange(exchange string) error {
+func (c *consumer) setExchange(exchange string) error {
 	c.exchange = exchange
 	return nil
 }
 
-func (c *consumer) SetQueue(queue string) error {
+func (c *consumer) setExchangeKind(kind string) error {
+	if kind == "" {
+		kind = "topic"
+	}
+	c.exchangeKind = kind
+	return nil
+}
+
+func (c *consumer) setQueue(queue string) error {
 	c.queue = queue
 	return nil
 }
 
-func (c *consumer) SetRoutingKey(routingKey string) error {
+func (c *consumer) setRoutingKey(routingKey string) error {
 	if routingKey == "" {
 		routingKey = "#"
 	}
@@ -91,7 +111,7 @@ func (c *consumer) SetRoutingKey(routingKey string) error {
 	return nil
 }
 
-func (c *consumer) SetPageSize(pageSize uint16) error {
+func (c *consumer) setPageSize(pageSize uint16) error {
 	if pageSize == 0 {
 		pageSize = 1
 	}
@@ -99,7 +119,7 @@ func (c *consumer) SetPageSize(pageSize uint16) error {
 	return nil
 }
 
-func (c *consumer) SetFlushInterval(interval time.Duration) error {
+func (c *consumer) setFlushInterval(interval time.Duration) error {
 	if interval < time.Second {
 		return errors.New("flush interval must be greater or equal than 1 second")
 	}
@@ -107,11 +127,16 @@ func (c *consumer) SetFlushInterval(interval time.Duration) error {
 	return nil
 }
 
-func (c *consumer) SetReconnectInterval(interval time.Duration) error {
+func (c *consumer) setReconnectInterval(interval time.Duration) error {
 	if interval < time.Second {
 		return errors.New("reconnect interval must be greater or equal than 1 second")
 	}
 	c.failsafeTimeout = interval
+	return nil
+}
+
+func (c *consumer) setQueueArgs(args amqp.Table) error {
+	c.queueArgs = args
 	return nil
 }
 
@@ -139,14 +164,20 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 		return false, err
 	}
 	defer c.tr.Close()
-
-	err = c.tr.ExchangeDeclare(c.exchange)
+	err = c.tr.ExchangeDeclare(c.exchange, c.exchangeKind)
 	if err != nil {
 		return false, err
 	}
 
+	if c.dlxExchange != "" {
+		err = c.tr.ExchangeDeclare(c.dlxExchange, c.exchangeKind)
+		if err != nil {
+			return false, err
+		}
+	}
+
 	var messages <-chan amqp.Delivery
-	messages, err = c.tr.Consume(c.queue, c.routingKey, c.exchange, c.pageSize)
+	messages, err = c.tr.Consume(c.queue, c.routingKey, c.exchange, c.pageSize, c.queueArgs)
 	if err != nil {
 		return false, err
 	}
@@ -207,7 +238,9 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 				// All business logic should be handled in the handler.
 				// So only infrastructure problems expected.
 				// Let's wait for 1 second.
-				c.logger.Error(err, pry.Ctx(ctx))
+				if c.logger != nil {
+					c.logger.Error(err, pry.Ctx(ctx))
+				}
 				_ = lastMsg.Nack(c.pageSize > 1, true)
 				time.Sleep(retrySleep)
 			} else {

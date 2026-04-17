@@ -25,7 +25,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 		ch.exchangeErr = errors.New("boom")
 
-		err := tr.ExchangeDeclare("exB")
+		err := tr.ExchangeDeclare("exB", "topic")
 		require.ErrorContains(t, err, "rabbit exchange:")
 	})
 
@@ -34,10 +34,22 @@ func TestTransport(t *testing.T) {
 		ch := &mockChan{}
 		tr := &transport{connection: fc, channel: ch}
 
-		require.NoError(t, tr.ExchangeDeclare("exA"))
+		require.NoError(t, tr.ExchangeDeclare("exA", "topic"))
 		require.Len(t, ch.exchangeDecls, 1)
 		require.Equal(t, "exA", ch.exchangeDecls[0].name)
 		require.Equal(t, "topic", ch.exchangeDecls[0].kind)
+		require.True(t, ch.exchangeDecls[0].durable)
+	})
+
+	t.Run("ExchangeDeclareDirect", func(t *testing.T) {
+		fc := &mockConn{}
+		ch := &mockChan{}
+		tr := &transport{connection: fc, channel: ch}
+
+		require.NoError(t, tr.ExchangeDeclare("exD", "direct"))
+		require.Len(t, ch.exchangeDecls, 1)
+		require.Equal(t, "exD", ch.exchangeDecls[0].name)
+		require.Equal(t, "direct", ch.exchangeDecls[0].kind)
 		require.True(t, ch.exchangeDecls[0].durable)
 	})
 
@@ -79,7 +91,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.queueDeclareErr = errors.New("qdecl")
-		_, err := tr.Consume("q1", "rk", "ex", 7)
+		_, err := tr.Consume("q1", "rk", "ex", 7, nil)
 		require.ErrorContains(t, err, "topic queue:")
 	})
 
@@ -89,7 +101,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.queueBindErr = errors.New("qbind")
-		_, err := tr.Consume("q2", "rk2", "ex2", 3)
+		_, err := tr.Consume("q2", "rk2", "ex2", 3, nil)
 		require.ErrorContains(t, err, "topic bind:")
 	})
 
@@ -99,7 +111,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.deliveries = make(chan amqp.Delivery)
-		_, err := tr.Consume("q3", "rk3", "ex3", 5)
+		_, err := tr.Consume("q3", "rk3", "ex3", 5, nil)
 		require.NoError(t, err)
 
 		// Verify QoS and Consume were called with expected args
@@ -123,7 +135,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.qosErr = errors.New("qosfail")
-		_, err := tr.Consume("q4", "rk4", "ex4", 9)
+		_, err := tr.Consume("q4", "rk4", "ex4", 9, nil)
 		require.ErrorContains(t, err, "qos:")
 	})
 }
