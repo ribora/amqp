@@ -229,6 +229,12 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 				if sourceIp, ok := lastMsg.Headers[model.SourceIpHeader].(string); ok {
 					s.SourceIp = sourceIp
 				}
+				if tp, ok := lastMsg.Headers[model.TraceparentHeader].(string); ok {
+					s.Traceparent = tp
+				}
+				if ts, ok := lastMsg.Headers[model.TracestateHeader].(string); ok {
+					s.Tracestate = ts
+				}
 				ctx = session.NewContextWithSession(ctx, s)
 			}
 			err = c.proceed(func() error {

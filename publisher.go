@@ -79,6 +79,12 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 		if s.SourceIp != "" {
 			message.Headers[model.SourceIpHeader] = s.SourceIp
 		}
+		if s.Traceparent != "" {
+			message.Headers[model.TraceparentHeader] = s.Traceparent
+		}
+		if s.Tracestate != "" {
+			message.Headers[model.TracestateHeader] = s.Tracestate
+		}
 	}
 
 	tr, err := r.transport()
