@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/gorib/amqp/model"
 	"gitlab.com/gorib/failure"
+	"gitlab.com/gorib/hilton"
 	"gitlab.com/gorib/pry"
 	"gitlab.com/gorib/session"
 )
@@ -237,9 +238,34 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 				}
 				ctx = session.NewContextWithSession(ctx, s)
 			}
+			provider := hilton.ProviderFromContext(ctx)
+			// If consumer ctx had no provider, fall through with Noop().
+			handlerCtx := ctx
+			if sc, ok := hilton.ParseTraceparent(headerString(lastMsg.Headers, model.TraceparentHeader)); ok {
+				handlerCtx = hilton.ContextWithRemoteSpanContext(handlerCtx, sc)
+			}
+			handlerCtx, span := provider.Tracer(instrumentationName).Start(handlerCtx, c.queue+" process",
+				hilton.WithSpanKind(hilton.SpanKindConsumer),
+				hilton.WithAttributes(
+					hilton.StringAttr("messaging.system", "rabbitmq"),
+					hilton.StringAttr("messaging.destination.name", c.exchange),
+					hilton.StringAttr("messaging.rabbitmq.destination.routing_key", lastMsg.RoutingKey),
+					hilton.StringAttr("messaging.operation.type", "process"),
+				),
+			)
+			if s := session.FromContext(handlerCtx); s != nil {
+				if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
+					s.Traceparent = tp
+				}
+			}
 			err = c.proceed(func() error {
-				return c.handler(ctx, keys, documents)
+				return c.handler(handlerCtx, keys, documents)
 			})
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(hilton.StatusError, err.Error())
+			}
+			span.End()
 			if err != nil {
 				// All business logic should be handled in the handler.
 				// So only infrastructure problems expected.
@@ -268,6 +294,13 @@ func (c *consumer) proceed(h func() error) (err error) {
 		}
 	}()
 	return h()
+}
+
+func headerString(h amqp.Table, key string) string {
+	if v, ok := h[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 func (c *consumer) Close() error {

@@ -9,8 +9,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"gitlab.com/gorib/amqp/model"
+	"gitlab.com/gorib/hilton"
 	"gitlab.com/gorib/session"
 )
+
+const instrumentationName = "gitlab.com/gorib/amqp"
 
 type EncodedMessage []byte
 
@@ -47,6 +50,30 @@ type publisher struct {
 }
 
 func (r *publisher) Publish(ctx context.Context, key string, document any) (err error) {
+	provider := hilton.ProviderFromContext(ctx)
+	ctx, span := provider.Tracer(instrumentationName).Start(ctx, r.exchange+" publish",
+		hilton.WithSpanKind(hilton.SpanKindProducer),
+		hilton.WithAttributes(
+			hilton.StringAttr("messaging.system", "rabbitmq"),
+			hilton.StringAttr("messaging.destination.name", r.exchange),
+			hilton.StringAttr("messaging.rabbitmq.destination.routing_key", key),
+			hilton.StringAttr("messaging.operation.type", "publish"),
+		),
+	)
+	defer span.End()
+	// Mirror new traceparent into session so the header set below propagates it.
+	if s := session.FromContext(ctx); s != nil {
+		if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
+			s.Traceparent = tp
+		}
+	}
+
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(hilton.StatusError, err.Error())
+		}
+	}()
 
 	var payload []byte
 	if enc, ok := document.(EncodedMessage); ok {
