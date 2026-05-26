@@ -9,9 +9,6 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"gitlab.com/gorib/amqp/model"
-	"gitlab.com/gorib/failure"
-	"gitlab.com/gorib/hilton"
-	"gitlab.com/gorib/pry"
 	"gitlab.com/gorib/session"
 )
 
@@ -66,8 +63,6 @@ type consumer struct {
 	pageSize        uint16
 	flushInterval   time.Duration
 	failsafeTimeout time.Duration
-
-	logger pry.Logger
 
 	stop    chan struct{}
 	stopper sync.Once
@@ -214,65 +209,15 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 				keys = append(keys, msg.RoutingKey)
 				documents = append(documents, msg.Body)
 			}
-			if c.pageSize == 1 {
-				s := session.Session{
-					Uri:           lastMsg.RoutingKey,
-					Method:        "AMQP",
-					Body:          string(lastMsg.Body),
-					CorrelationId: lastMsg.CorrelationId,
-				}
-				if userAgent, ok := lastMsg.Headers[model.UserAgentHeader].(string); ok {
-					s.UserAgent = userAgent
-				}
-				if userLanguage, ok := lastMsg.Headers[model.UserLanguageHeader].(string); ok {
-					s.UserLanguage = userLanguage
-				}
-				if sourceIp, ok := lastMsg.Headers[model.SourceIpHeader].(string); ok {
-					s.SourceIp = sourceIp
-				}
-				if tp, ok := lastMsg.Headers[model.TraceparentHeader].(string); ok {
-					s.Traceparent = tp
-				}
-				if ts, ok := lastMsg.Headers[model.TracestateHeader].(string); ok {
-					s.Tracestate = ts
-				}
-				ctx = session.NewContextWithSession(ctx, s)
-			}
-			provider := hilton.ProviderFromContext(ctx)
-			// If consumer ctx had no provider, fall through with Noop().
+
 			handlerCtx := ctx
-			if sc, ok := hilton.ParseTraceparent(headerString(lastMsg.Headers, model.TraceparentHeader)); ok {
-				handlerCtx = hilton.ContextWithRemoteSpanContext(handlerCtx, sc)
+			if c.pageSize == 1 {
+				handlerCtx = session.NewContextWithSession(handlerCtx, buildSession(lastMsg))
 			}
-			handlerCtx, span := provider.Tracer(instrumentationName).Start(handlerCtx, c.queue+" process",
-				hilton.WithSpanKind(hilton.SpanKindConsumer),
-				hilton.WithAttributes(
-					hilton.StringAttr("messaging.system", "rabbitmq"),
-					hilton.StringAttr("messaging.destination.name", c.exchange),
-					hilton.StringAttr("messaging.rabbitmq.destination.routing_key", lastMsg.RoutingKey),
-					hilton.StringAttr("messaging.operation.type", "process"),
-				),
-			)
-			if s := session.FromContext(handlerCtx); s != nil {
-				if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
-					s.Traceparent = tp
-				}
-			}
-			err = c.proceed(func() error {
-				return c.handler(handlerCtx, keys, documents)
-			})
+			handlerCtx = ContextWithHeaders(handlerCtx, lastMsg.Headers)
+
+			err = c.handler(handlerCtx, keys, documents)
 			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(hilton.StatusError, err.Error())
-			}
-			span.End()
-			if err != nil {
-				// All business logic should be handled in the handler.
-				// So only infrastructure problems expected.
-				// Let's wait for 1 second.
-				if c.logger != nil {
-					c.logger.Error(err, pry.Ctx(ctx))
-				}
 				_ = lastMsg.Nack(c.pageSize > 1, true)
 				time.Sleep(retrySleep)
 			} else {
@@ -287,20 +232,29 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 	}
 }
 
-func (c *consumer) proceed(h func() error) (err error) {
-	defer func() {
-		if r := recover(); r != nil && err == nil {
-			err = failure.Panic(r)
-		}
-	}()
-	return h()
-}
-
-func headerString(h amqp.Table, key string) string {
-	if v, ok := h[key].(string); ok {
-		return v
+func buildSession(msg amqp.Delivery) session.Session {
+	s := session.Session{
+		Uri:           msg.RoutingKey,
+		Method:        "AMQP",
+		Body:          string(msg.Body),
+		CorrelationId: msg.CorrelationId,
 	}
-	return ""
+	if userAgent, ok := msg.Headers[model.UserAgentHeader].(string); ok {
+		s.UserAgent = userAgent
+	}
+	if userLanguage, ok := msg.Headers[model.UserLanguageHeader].(string); ok {
+		s.UserLanguage = userLanguage
+	}
+	if sourceIp, ok := msg.Headers[model.SourceIpHeader].(string); ok {
+		s.SourceIp = sourceIp
+	}
+	if tp, ok := msg.Headers[model.TraceparentHeader].(string); ok {
+		s.Traceparent = tp
+	}
+	if ts, ok := msg.Headers[model.TracestateHeader].(string); ok {
+		s.Tracestate = ts
+	}
+	return s
 }
 
 func (c *consumer) Close() error {

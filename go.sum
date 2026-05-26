@@ -44,6 +44,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 gitlab.com/gorib/failure v1.0.0 h1:ZQ5d/dFdJhhiSAPGQ0ErRBkDo4jYbD54XV/BXWXmA3w=
 gitlab.com/gorib/failure v1.0.0/go.mod h1:G4h/bpjuzjrfUUXm+p3K8mixVhuvEyTJ3fx/Ayy9Ylc=
+gitlab.com/gorib/failure v1.1.0 h1:hYW0C4LJPNAPGBS18IT2hiJoBZ4OzRlIP0fhOhfdTQE=
+gitlab.com/gorib/failure v1.1.0/go.mod h1:G4h/bpjuzjrfUUXm+p3K8mixVhuvEyTJ3fx/Ayy9Ylc=
 gitlab.com/gorib/hilton v1.0.3 h1:oMNcmDGJulpNcppJxdQWW842WHj9NNOQPr9srGqjvxA=
 gitlab.com/gorib/hilton v1.0.3/go.mod h1:sWcGPiMLilFCLN9Fb8XKTRACl+Z+LGrw9w++5fgk/Zs=
 gitlab.com/gorib/pry v1.1.0 h1:JHZ8bCPcdUQQYVvJqK/rMKL39Dh7/o8IHec0EJkwGM8=

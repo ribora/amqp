@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/gorib/amqp/model"
-	"gitlab.com/gorib/pry"
 	"gitlab.com/gorib/session"
 )
 
@@ -20,13 +19,27 @@ func initTransportFunc(t *testing.T, ft *mockTransport) *mockTransport {
 	return ft
 }
 
+type testRecover struct{}
+
+func (testRecover) Name() string { return "recover" }
+func (testRecover) Order() int   { return 500 }
+
+func (testRecover) Wrap(next func(ctx context.Context, keys []string, documents [][]byte) error) func(ctx context.Context, keys []string, documents [][]byte) error {
+	return func(ctx context.Context, keys []string, documents [][]byte) (err error) {
+		defer func() {
+			if r := recover(); r != nil && err == nil {
+				err = errors.New("panic")
+			}
+		}()
+		return next(ctx, keys, documents)
+	}
+}
+
 func TestConsumer(t *testing.T) {
 	trFunc := newTransportFunc
 	defer func() {
 		newTransportFunc = trFunc
 	}()
-
-	logger, _ := pry.New("trace")
 
 	t.Run("NilHandler", func(t *testing.T) {
 		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
@@ -48,7 +61,6 @@ func TestConsumer(t *testing.T) {
 		cons, err := NewConsumer(dsn, ex, q, rk,
 			WithConsumerPageSize(ps),
 			WithConsumerFlushInterval(fi),
-			WithConsumerLogger(logger),
 		)
 		require.NoError(t, err)
 
@@ -58,7 +70,6 @@ func TestConsumer(t *testing.T) {
 		require.Equal(t, rk, cons.routingKey)
 		require.EqualValues(t, ps, cons.pageSize)
 		require.Equal(t, fi, cons.flushInterval)
-		require.NotNil(t, cons.logger)
 		require.Equal(t, 300*time.Second, cons.failsafeTimeout)
 	})
 
@@ -123,7 +134,6 @@ func TestConsumer(t *testing.T) {
 		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
-			WithConsumerLogger(logger),
 		)
 		require.NoError(t, err)
 		done := make(chan struct{})
@@ -171,7 +181,6 @@ func TestConsumer(t *testing.T) {
 		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
 			WithConsumerPageSize(2),
 			WithConsumerFlushInterval(time.Hour),
-			WithConsumerLogger(logger),
 		)
 		require.NoError(t, err)
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
@@ -432,9 +441,9 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(testRecover{}.Wrap(func(ctx context.Context, keys []string, documents [][]byte) error {
 			panic("some error")
-		})
+		}))
 		ctx := context.Background()
 		go cons.Consume(ctx)
 		ft.messages <- msg
@@ -455,9 +464,9 @@ func TestConsumer(t *testing.T) {
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(testRecover{}.Wrap(func(ctx context.Context, keys []string, documents [][]byte) error {
 			panic("boom")
-		})
+		}))
 		go cons.Consume(context.Background())
 		ft.messages <- amqp.Delivery{Body: []byte("a"), RoutingKey: "rk", Acknowledger: ack1}
 		ft.messages <- amqp.Delivery{Body: []byte("b"), RoutingKey: "rk", Acknowledger: ack2}
