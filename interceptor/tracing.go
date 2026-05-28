@@ -2,6 +2,7 @@ package interceptor
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/gorib/amqp"
@@ -64,18 +65,16 @@ func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents
 		err := next(ctx, keys, documents)
 		took := time.Since(start).Seconds()
 
-		status := "ok"
+		attrs := []hilton.Attribute{
+			hilton.StringAttr("messaging.system", "rabbitmq"),
+		}
 		if err != nil {
-			status = "error"
 			span.RecordError(err)
 			span.SetStatus(hilton.StatusError, err.Error())
+			attrs = append(attrs, hilton.StringAttr("error.type", fmt.Sprintf("%T", err)))
 		}
 		span.End()
 
-		attrs := []hilton.Attribute{
-			hilton.StringAttr("messaging.system", "rabbitmq"),
-			hilton.StringAttr("status", status),
-		}
 		t.duration.Record(ctx, took, attrs...)
 		t.messages.Add(ctx, int64(len(documents)), attrs...)
 
