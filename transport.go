@@ -9,7 +9,7 @@ import (
 
 type transportAPI interface {
 	ExchangeDeclare(exchange, kind string) error
-	Consume(queue, routingKey, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error)
+	Consume(queue string, routingKeys []string, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error)
 	PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) error
 	Close() error
 }
@@ -65,14 +65,15 @@ func (t *transport) ExchangeDeclare(exchange, kind string) error {
 	return nil
 }
 
-func (t *transport) Consume(queue, routingKey, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
+func (t *transport) Consume(queue string, routingKeys []string, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
 	q, err := t.channel.QueueDeclare(queue, true, false, false, false, args)
 	if err != nil {
 		return nil, fmt.Errorf("topic queue: %w", err)
 	}
-	err = t.channel.QueueBind(q.Name, routingKey, exchange, false, nil)
-	if err != nil {
-		return nil, fmt.Errorf("topic bind: %w", err)
+	for _, rk := range routingKeys {
+		if err := t.channel.QueueBind(q.Name, rk, exchange, false, nil); err != nil {
+			return nil, fmt.Errorf("topic bind %q: %w", rk, err)
+		}
 	}
 	if prefetchCount > 1 {
 		err = t.channel.Qos(int(prefetchCount), 0, false)

@@ -91,7 +91,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.queueDeclareErr = errors.New("qdecl")
-		_, err := tr.Consume("q1", "rk", "ex", 7, nil)
+		_, err := tr.Consume("q1", []string{"rk"}, "ex", 7, nil)
 		require.ErrorContains(t, err, "topic queue:")
 	})
 
@@ -101,8 +101,8 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.queueBindErr = errors.New("qbind")
-		_, err := tr.Consume("q2", "rk2", "ex2", 3, nil)
-		require.ErrorContains(t, err, "topic bind:")
+		_, err := tr.Consume("q2", []string{"rk2"}, "ex2", 3, nil)
+		require.ErrorContains(t, err, "topic bind")
 	})
 
 	t.Run("Consume", func(t *testing.T) {
@@ -111,7 +111,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.deliveries = make(chan amqp.Delivery)
-		_, err := tr.Consume("q3", "rk3", "ex3", 5, nil)
+		_, err := tr.Consume("q3", []string{"rk3"}, "ex3", 5, nil)
 		require.NoError(t, err)
 
 		// Verify QoS and Consume were called with expected args
@@ -135,7 +135,7 @@ func TestTransport(t *testing.T) {
 		tr := &transport{connection: fc, channel: ch}
 
 		ch.qosErr = errors.New("qosfail")
-		_, err := tr.Consume("q4", "rk4", "ex4", 9, nil)
+		_, err := tr.Consume("q4", []string{"rk4"}, "ex4", 9, nil)
 		require.ErrorContains(t, err, "qos:")
 	})
 }

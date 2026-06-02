@@ -42,11 +42,12 @@ func TestConsumer(t *testing.T) {
 	}()
 
 	t.Run("NilHandler", func(t *testing.T) {
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.ErrorContains(t, cons.Consume(context.Background()), "message handler is undefined")
 	})
 
@@ -58,28 +59,29 @@ func TestConsumer(t *testing.T) {
 		ps := uint16(7)
 		fi := 3 * time.Second
 
-		cons, err := NewConsumer(dsn, ex, q, rk,
+		cons, err := NewConsumer(dsn, ex, q,
 			WithConsumerPageSize(ps),
 			WithConsumerFlushInterval(fi),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind(rk))
 
 		require.Equal(t, dsn, cons.dsn)
 		require.Equal(t, ex, cons.exchange)
 		require.Equal(t, q, cons.queue)
-		require.Equal(t, rk, cons.routingKey)
+		require.Equal(t, []string{rk}, cons.routingKeys)
 		require.EqualValues(t, ps, cons.pageSize)
 		require.Equal(t, fi, cons.flushInterval)
 		require.Equal(t, 300*time.Second, cons.failsafeTimeout)
 	})
 
-	t.Run("SuccessEmptyRoutingKeyAndZeroPageSize", func(t *testing.T) {
-		cons, err := NewConsumer("amqp://", "ex", "q", "",
+	t.Run("ZeroPageSizeDefaults", func(t *testing.T) {
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(0),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		require.Equal(t, "#", cons.routingKey)
+		require.NoError(t, cons.Bind("rk"))
 		require.EqualValues(t, uint16(1), cons.pageSize)
 		require.Equal(t, time.Second, cons.flushInterval)
 		require.Equal(t, "amqp://", cons.dsn)
@@ -87,8 +89,29 @@ func TestConsumer(t *testing.T) {
 		require.Equal(t, "q", cons.queue)
 	})
 
+	t.Run("BindEmptyRejected", func(t *testing.T) {
+		cons, err := NewConsumer("amqp://", "ex", "q",
+			WithConsumerPageSize(1),
+			WithConsumerFlushInterval(time.Second),
+		)
+		require.NoError(t, err)
+		require.ErrorContains(t, cons.Bind(""), "routing key is empty")
+	})
+
+	t.Run("BindDeduplicates", func(t *testing.T) {
+		cons, err := NewConsumer("amqp://", "ex", "q",
+			WithConsumerPageSize(1),
+			WithConsumerFlushInterval(time.Second),
+		)
+		require.NoError(t, err)
+		require.NoError(t, cons.Bind("a"))
+		require.NoError(t, cons.Bind("a"))
+		require.NoError(t, cons.Bind("b"))
+		require.Equal(t, []string{"a", "b"}, cons.routingKeys)
+	})
+
 	t.Run("InvalidConstructorFlushInterval", func(t *testing.T) {
-		_, err := NewConsumer("amqp://", "ex", "q", "rk",
+		_, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerFlushInterval(500*time.Millisecond),
 		)
 		require.Error(t, err)
@@ -96,21 +119,23 @@ func TestConsumer(t *testing.T) {
 	})
 
 	t.Run("InvalidIntervals", func(t *testing.T) {
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.Error(t, cons.SetFlushInterval(500*time.Millisecond))
 		require.Error(t, cons.SetReconnectInterval(500*time.Millisecond))
 	})
 
 	t.Run("InvalidConfig", func(t *testing.T) {
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetExchange(""))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
 		require.ErrorContains(t, cons.Consume(context.Background()), "invalid consumer config")
@@ -131,11 +156,12 @@ func TestConsumer(t *testing.T) {
 			Acknowledger:  &mockAcker{},
 		}
 
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		done := make(chan struct{})
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			require.Len(t, keys, 1)
@@ -178,11 +204,12 @@ func TestConsumer(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 4)})
 
 		hCalled := make(chan struct{})
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(2),
 			WithConsumerFlushInterval(time.Hour),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			require.Len(t, keys, 2)
 			require.Nil(t, session.FromContext(ctx))
@@ -213,25 +240,26 @@ func TestConsumer(t *testing.T) {
 
 	t.Run("WrongTransport", func(t *testing.T) {
 		newTransportFunc = func(dsn string) (transportAPI, error) { return nil, errors.New("error") }
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
 	})
 
-	t.Run("DefaultRoutingKeyWildcard", func(t *testing.T) {
+	t.Run("ExplicitWildcardBind", func(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 1)})
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
-		require.NoError(t, cons.SetRoutingKey(""))
+		require.NoError(t, cons.Bind("#"))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
@@ -249,11 +277,12 @@ func TestConsumer(t *testing.T) {
 	t.Run("ExchangeDeclareFail", func(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 10)})
 		ft.exchangeErr = errors.New("error")
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			return nil
 		})
@@ -263,12 +292,13 @@ func TestConsumer(t *testing.T) {
 	t.Run("DlxExchangeDeclareSuccess", func(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 1)})
 		dlx := "dlx-exchange"
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 			WithConsumerQueueArguments(QueueConfig{DeadLetterExchange: dlx}),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.Equal(t, dlx, cons.dlxExchange)
 
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
@@ -283,11 +313,12 @@ func TestConsumer(t *testing.T) {
 	t.Run("ConsumeFail", func(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 10)})
 		ft.consumeErr = errors.New("error")
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			return nil
 		})
@@ -303,11 +334,12 @@ func TestConsumer(t *testing.T) {
 			transports = append(transports, ft)
 			return ft, nil
 		}
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Hour),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			return nil
@@ -338,11 +370,12 @@ func TestConsumer(t *testing.T) {
 			transports = append(transports, ft)
 			return ft, nil
 		}
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Hour),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 
 		done := make(chan struct{})
@@ -392,11 +425,12 @@ func TestConsumer(t *testing.T) {
 			close(done)
 			return nil
 		}
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(2),
 			WithConsumerFlushInterval(time.Hour),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(h)
 
 		ctx := context.Background()
@@ -436,11 +470,12 @@ func TestConsumer(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 2)})
 		ack := &mockAcker{}
 		msg := amqp.Delivery{Body: []byte("x"), RoutingKey: "rk", Acknowledger: ack}
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(testRecover{}.Wrap(func(ctx context.Context, keys []string, documents [][]byte) error {
 			panic("some error")
 		}))
@@ -459,11 +494,12 @@ func TestConsumer(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 2)})
 		ack1 := &mockAcker{}
 		ack2 := &mockAcker{}
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(2),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		cons.SetHandler(testRecover{}.Wrap(func(ctx context.Context, keys []string, documents [][]byte) error {
 			panic("boom")
 		}))
@@ -484,11 +520,12 @@ func TestConsumer(t *testing.T) {
 		msg := amqp.Delivery{Body: []byte("only"), RoutingKey: "rk", Acknowledger: ack}
 
 		done := make(chan struct{})
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(5),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(time.Hour))
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
 			require.Len(t, keys, 1)
@@ -537,11 +574,12 @@ func TestConsumer(t *testing.T) {
 			},
 		}
 
-		cons, err := NewConsumer("amqp://", "ex", "q", "rk0",
+		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(0),
 			WithConsumerFlushInterval(time.Second),
 		)
 		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk0"))
 
 		done := make(chan struct{})
 		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {

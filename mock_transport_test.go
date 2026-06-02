@@ -2,6 +2,7 @@ package amqp
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -61,11 +62,11 @@ func (f *mockTransport) ExchangeDeclare(exchange, kind string) error {
 	return f.exchangeErr
 }
 
-func (f *mockTransport) Consume(queue, routingKey, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
+func (f *mockTransport) Consume(queue string, routingKeys []string, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
 	f.consumeArgs = append(f.consumeArgs, struct {
 		q, rk, ex string
 		prefetch  uint16
-	}{queue, routingKey, exchange, prefetchCount})
+	}{queue, strings.Join(routingKeys, ","), exchange, prefetchCount})
 	if f.consumeErr != nil {
 		return nil, f.consumeErr
 	}

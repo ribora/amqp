@@ -16,7 +16,7 @@ var (
 	retrySleep = time.Second
 )
 
-func NewConsumer(dsn, exchange, queue, routingKey string, opts ...ConsumerOptions) (*consumer, error) {
+func NewConsumer(dsn, exchange, queue string, opts ...ConsumerOptions) (*consumer, error) {
 	c := &consumer{
 		stop:            make(chan struct{}),
 		failsafeTimeout: 300 * time.Second,
@@ -28,9 +28,6 @@ func NewConsumer(dsn, exchange, queue, routingKey string, opts ...ConsumerOption
 		return nil, err
 	}
 	if err := c.SetQueue(queue); err != nil {
-		return nil, err
-	}
-	if err := c.SetRoutingKey(routingKey); err != nil {
 		return nil, err
 	}
 	if err := c.SetExchangeKind(""); err != nil {
@@ -59,7 +56,7 @@ type consumer struct {
 	dlxExchange     string
 	queue           string
 	queueArgs       amqp.Table
-	routingKey      string
+	routingKeys     []string
 	pageSize        uint16
 	flushInterval   time.Duration
 	failsafeTimeout time.Duration
@@ -99,11 +96,20 @@ func (c *consumer) SetQueue(queue string) error {
 	return nil
 }
 
-func (c *consumer) SetRoutingKey(routingKey string) error {
+// Bind adds a routing-key binding for the consumer's queue. Idempotent at
+// the broker level (QueueBind is itself idempotent), and de-duplicated here
+// so we don't do redundant network calls if the caller registers the same
+// key twice. Empty key is rejected — use "#" explicitly for fan-out.
+func (c *consumer) Bind(routingKey string) error {
 	if routingKey == "" {
-		routingKey = "#"
+		return errors.New("routing key is empty")
 	}
-	c.routingKey = routingKey
+	for _, k := range c.routingKeys {
+		if k == routingKey {
+			return nil
+		}
+	}
+	c.routingKeys = append(c.routingKeys, routingKey)
 	return nil
 }
 
@@ -155,6 +161,9 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 	if c.dsn == "" || c.exchange == "" || c.queue == "" {
 		return false, errors.New("invalid consumer config")
 	}
+	if len(c.routingKeys) == 0 {
+		return false, errors.New("no routing keys bound — call Bind before Consume")
+	}
 	c.tr, err = newTransportFunc(c.dsn)
 	if err != nil {
 		return false, err
@@ -173,7 +182,7 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 	}
 
 	var messages <-chan amqp.Delivery
-	messages, err = c.tr.Consume(c.queue, c.routingKey, c.exchange, c.pageSize, c.queueArgs)
+	messages, err = c.tr.Consume(c.queue, c.routingKeys, c.exchange, c.pageSize, c.queueArgs)
 	if err != nil {
 		return false, err
 	}
