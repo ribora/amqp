@@ -50,9 +50,9 @@ func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents
 		ctx, span := t.tracer.Start(ctx, "amqp process",
 			hilton.WithSpanKind(hilton.SpanKindConsumer),
 			hilton.WithAttributes(
-				hilton.StringAttr("messaging.system", "rabbitmq"),
-				hilton.StringAttr("messaging.rabbitmq.destination.routing_key", routingKey),
-				hilton.StringAttr("messaging.operation.type", "process"),
+				hilton.Attr("messaging.system", "rabbitmq"),
+				hilton.Attr("messaging.rabbitmq.destination.routing_key", routingKey),
+				hilton.Attr("messaging.operation.type", "process"),
 			),
 		)
 		if s := session.FromContext(ctx); s != nil {
@@ -66,12 +66,12 @@ func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents
 		took := time.Since(start).Seconds()
 
 		attrs := []hilton.Attribute{
-			hilton.StringAttr("messaging.system", "rabbitmq"),
+			hilton.Attr("messaging.system", "rabbitmq"),
 		}
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(hilton.StatusError, err.Error())
-			attrs = append(attrs, hilton.StringAttr("error.type", fmt.Sprintf("%T", err)))
+			attrs = append(attrs, hilton.Attr("error.type", fmt.Sprintf("%T", err)))
 		}
 		span.End()
 

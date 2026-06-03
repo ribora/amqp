@@ -54,10 +54,10 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 	ctx, span := provider.Tracer(instrumentationName).Start(ctx, r.exchange+" publish",
 		hilton.WithSpanKind(hilton.SpanKindProducer),
 		hilton.WithAttributes(
-			hilton.StringAttr("messaging.system", "rabbitmq"),
-			hilton.StringAttr("messaging.destination.name", r.exchange),
-			hilton.StringAttr("messaging.rabbitmq.destination.routing_key", key),
-			hilton.StringAttr("messaging.operation.type", "publish"),
+			hilton.Attr("messaging.system", "rabbitmq"),
+			hilton.Attr("messaging.destination.name", r.exchange),
+			hilton.Attr("messaging.rabbitmq.destination.routing_key", key),
+			hilton.Attr("messaging.operation.type", "publish"),
 		),
 	)
 	defer span.End()
