@@ -14,14 +14,15 @@ const instrumentationName = "gitlab.com/gorib/amqp"
 
 // NewTracing extracts incoming W3C trace context from AMQP headers, starts a
 // CONSUMER-kind span, injects provider into ctx, and mirrors traceparent into
-// session. Records messaging.receive.{duration,messages}.
+// session. Records messaging.process.duration and messaging.client.consumed.messages (per-message,
+// meaningful when the consumer batches via pageSize>1).
 func NewTracing(provider hilton.Provider) *tracingMW {
 	meter := provider.Meter(instrumentationName)
 	return &tracingMW{
 		provider: provider,
 		tracer:   provider.Tracer(instrumentationName),
-		duration: meter.Histogram("messaging.receive.duration", hilton.WithDescription("Duration of AMQP message processing"), hilton.WithUnit("s")),
-		messages: meter.Counter("messaging.receive.messages", hilton.WithDescription("Total AMQP messages processed")),
+		duration: meter.Histogram("messaging.process.duration", hilton.WithDescription("Duration of AMQP message processing"), hilton.WithUnit("s")),
+		messages: meter.Counter("messaging.client.consumed.messages", hilton.WithDescription("Number of AMQP messages consumed by the client")),
 	}
 }
 
@@ -67,6 +68,7 @@ func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents
 
 		attrs := []hilton.Attribute{
 			hilton.Attr("messaging.system", "rabbitmq"),
+			hilton.Attr("messaging.operation.type", "process"),
 		}
 		if err != nil {
 			span.RecordError(err)
