@@ -63,12 +63,12 @@ type consumer struct {
 
 	stop    chan struct{}
 	stopper sync.Once
-	handler func(ctx context.Context, keys []string, documents [][]byte) error
+	handler func(msgs []Source) error
 
 	tr transportAPI
 }
 
-func (c *consumer) SetHandler(handler func(ctx context.Context, keys []string, documents [][]byte) error) error {
+func (c *consumer) SetHandler(handler func(msgs []Source) error) error {
 	c.handler = handler
 	return nil
 }
@@ -212,20 +212,15 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 		}
 		if len(batch) >= int(c.pageSize) || needFlush && len(batch) > 0 {
 			lastMsg := batch[len(batch)-1]
-			keys := make([]string, 0, len(batch))
-			documents := make([][]byte, 0, len(batch))
+
+			sources := make([]Source, 0, len(batch))
 			for _, msg := range batch {
-				keys = append(keys, msg.RoutingKey)
-				documents = append(documents, msg.Body)
+				mctx := session.NewContextWithSession(ctx, buildSession(msg))
+				mctx = ContextWithHeaders(mctx, msg.Headers)
+				sources = append(sources, newSource(mctx, msg))
 			}
 
-			handlerCtx := ctx
-			if c.pageSize == 1 {
-				handlerCtx = session.NewContextWithSession(handlerCtx, buildSession(lastMsg))
-			}
-			handlerCtx = ContextWithHeaders(handlerCtx, lastMsg.Headers)
-
-			err = c.handler(handlerCtx, keys, documents)
+			err = c.handler(sources)
 			if err != nil {
 				_ = lastMsg.Nack(c.pageSize > 1, true)
 				time.Sleep(retrySleep)

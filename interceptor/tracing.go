@@ -1,7 +1,6 @@
 package interceptor
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -36,17 +35,18 @@ type tracingMW struct {
 func (tracingMW) Name() string { return "tracing" }
 func (tracingMW) Order() int   { return 100 }
 
-func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents [][]byte) error) func(ctx context.Context, keys []string, documents [][]byte) error {
-	return func(ctx context.Context, keys []string, documents [][]byte) error {
-		ctx = hilton.ContextWithProvider(ctx, t.provider)
+func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.Source) error {
+	return func(msgs []amqp.Source) error {
+		if len(msgs) == 0 {
+			return next(msgs)
+		}
+
+		ctx := hilton.ContextWithProvider(msgs[len(msgs)-1].Context(), t.provider)
 		if headers := amqp.HeadersFromContext(ctx); headers != nil {
 			ctx = t.provider.Propagator().Extract(ctx, amqp.TableCarrier(headers))
 		}
 
-		routingKey := ""
-		if len(keys) > 0 {
-			routingKey = keys[len(keys)-1]
-		}
+		routingKey := msgs[len(msgs)-1].RoutingKey()
 
 		ctx, span := t.tracer.Start(ctx, "amqp process",
 			hilton.WithSpanKind(hilton.SpanKindConsumer),
@@ -62,8 +62,12 @@ func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents
 			}
 		}
 
+		for i := range msgs {
+			msgs[i] = msgs[i].WithContext(ctx)
+		}
+
 		start := time.Now()
-		err := next(ctx, keys, documents)
+		err := next(msgs)
 		took := time.Since(start).Seconds()
 
 		attrs := []hilton.Attribute{
@@ -78,7 +82,7 @@ func (t *tracingMW) Wrap(next func(ctx context.Context, keys []string, documents
 		span.End()
 
 		t.duration.Record(ctx, took, attrs...)
-		t.messages.Add(ctx, int64(len(documents)), attrs...)
+		t.messages.Add(ctx, int64(len(msgs)), attrs...)
 
 		return err
 	}

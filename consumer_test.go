@@ -24,14 +24,14 @@ type testRecover struct{}
 func (testRecover) Name() string { return "recover" }
 func (testRecover) Order() int   { return 500 }
 
-func (testRecover) Wrap(next func(ctx context.Context, keys []string, documents [][]byte) error) func(ctx context.Context, keys []string, documents [][]byte) error {
-	return func(ctx context.Context, keys []string, documents [][]byte) (err error) {
+func (testRecover) Wrap(next func(msgs []Source) error) func(msgs []Source) error {
+	return func(msgs []Source) (err error) {
 		defer func() {
 			if r := recover(); r != nil && err == nil {
 				err = errors.New("panic")
 			}
 		}()
-		return next(ctx, keys, documents)
+		return next(msgs)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetExchange(""))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
+		cons.SetHandler(func(msgs []Source) error { return nil })
 		require.ErrorContains(t, cons.Consume(context.Background()), "invalid consumer config")
 	})
 
@@ -163,11 +163,11 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		done := make(chan struct{})
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
-			require.Len(t, keys, 1)
-			require.Equal(t, "service.action", keys[0])
-			require.Equal(t, [][]byte{[]byte("{\"ok\":true}")}, documents)
-			s := session.FromContext(ctx)
+		cons.SetHandler(func(msgs []Source) error {
+			require.Len(t, msgs, 1)
+			require.Equal(t, "service.action", msgs[0].RoutingKey())
+			require.Equal(t, []byte("{\"ok\":true}"), msgs[0].Body())
+			s := session.FromContext(msgs[0].Context())
 			require.NotNil(t, s)
 			require.Equal(t, msg.RoutingKey, s.Uri)
 			require.Equal(t, "AMQP", s.Method)
@@ -200,7 +200,7 @@ func TestConsumer(t *testing.T) {
 		}
 	})
 
-	t.Run("NoSessionForBatch", func(t *testing.T) {
+	t.Run("SessionPerMessageInBatch", func(t *testing.T) {
 		ft := initTransportFunc(t, &mockTransport{messages: make(chan amqp.Delivery, 4)})
 
 		hCalled := make(chan struct{})
@@ -210,9 +210,10 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
-			require.Len(t, keys, 2)
-			require.Nil(t, session.FromContext(ctx))
+		cons.SetHandler(func(msgs []Source) error {
+			require.Len(t, msgs, 2)
+			// Each delivery now carries its own session, even in a batch.
+			require.NotNil(t, session.FromContext(msgs[0].Context()))
 			close(hCalled)
 			return nil
 		})
@@ -246,7 +247,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
@@ -260,7 +261,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("#"))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
+		cons.SetHandler(func(msgs []Source) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
 		time.Sleep(50 * time.Millisecond)
@@ -283,7 +284,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
@@ -301,7 +302,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		require.Equal(t, dlx, cons.dlxExchange)
 
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error { return nil })
+		cons.SetHandler(func(msgs []Source) error { return nil })
 		go func() { _ = cons.Consume(context.Background()) }()
 		time.Sleep(50 * time.Millisecond)
 
@@ -319,7 +320,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
@@ -341,7 +342,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
 
@@ -379,7 +380,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 
 		done := make(chan struct{})
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(func(msgs []Source) error {
 			close(done)
 			return nil
 		})
@@ -418,10 +419,12 @@ func TestConsumer(t *testing.T) {
 		var gotKeys []string
 		var gotBodies [][]byte
 		done := make(chan struct{})
-		h := func(ctx context.Context, keys []string, payloads [][]byte) error {
-			require.Len(t, keys, 2)
-			gotKeys = keys
-			gotBodies = append([][]byte(nil), payloads...)
+		h := func(msgs []Source) error {
+			require.Len(t, msgs, 2)
+			for _, m := range msgs {
+				gotKeys = append(gotKeys, m.RoutingKey())
+				gotBodies = append(gotBodies, m.Body())
+			}
 			close(done)
 			return nil
 		}
@@ -476,7 +479,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
-		cons.SetHandler(testRecover{}.Wrap(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
 			panic("some error")
 		}))
 		ctx := context.Background()
@@ -500,7 +503,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
-		cons.SetHandler(testRecover{}.Wrap(func(ctx context.Context, keys []string, documents [][]byte) error {
+		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
 			panic("boom")
 		}))
 		go cons.Consume(context.Background())
@@ -527,10 +530,10 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(time.Hour))
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
-			require.Len(t, keys, 1)
-			require.Equal(t, "rk", keys[0])
-			require.Equal(t, [][]byte{[]byte("only")}, documents)
+		cons.SetHandler(func(msgs []Source) error {
+			require.Len(t, msgs, 1)
+			require.Equal(t, "rk", msgs[0].RoutingKey())
+			require.Equal(t, []byte("only"), msgs[0].Body())
 			close(done)
 			return nil
 		})
@@ -582,11 +585,11 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk0"))
 
 		done := make(chan struct{})
-		cons.SetHandler(func(ctx context.Context, keys []string, documents [][]byte) error {
-			require.Len(t, keys, 1)
-			require.Equal(t, "rk0", keys[0])
-			require.Equal(t, [][]byte{[]byte("p0")}, documents)
-			s := session.FromContext(ctx)
+		cons.SetHandler(func(msgs []Source) error {
+			require.Len(t, msgs, 1)
+			require.Equal(t, "rk0", msgs[0].RoutingKey())
+			require.Equal(t, []byte("p0"), msgs[0].Body())
+			s := session.FromContext(msgs[0].Context())
 			require.NotNil(t, s)
 			require.Equal(t, msg.CorrelationId, s.CorrelationId)
 			close(done)
