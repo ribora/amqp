@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/stretchr/testify v1.11.1
-	gitlab.com/gorib/failure v1.1.1
+	gitlab.com/gorib/failure v1.2.0
 	gitlab.com/gorib/hilton v1.1.0
 	gitlab.com/gorib/pry v1.2.1
 	gitlab.com/gorib/session v1.1.1
