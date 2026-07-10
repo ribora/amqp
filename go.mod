@@ -9,7 +9,7 @@ require (
 	gitlab.com/gorib/hilton v1.1.0
 	gitlab.com/gorib/pry v1.2.1
 	gitlab.com/gorib/session v1.1.1
-	gitlab.com/gorib/whisk v1.0.2
+	gitlab.com/gorib/whisk v1.1.1
 )
 
 require (
