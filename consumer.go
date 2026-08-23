@@ -168,6 +168,7 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	//nolint:errcheck
 	defer c.tr.Close()
 	err = c.tr.ExchangeDeclare(c.exchange, c.exchangeKind)
 	if err != nil {

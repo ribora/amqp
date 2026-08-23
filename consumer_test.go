@@ -137,6 +137,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetExchange(""))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error { return nil })
 		require.ErrorContains(t, cons.Consume(context.Background()), "invalid consumer config")
 	})
@@ -163,6 +164,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		done := make(chan struct{})
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			require.Len(t, msgs, 1)
 			require.Equal(t, "service.action", msgs[0].RoutingKey())
@@ -210,6 +212,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			require.Len(t, msgs, 2)
 			// Each delivery now carries its own session, even in a batch.
@@ -247,6 +250,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
@@ -261,6 +265,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("#"))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
@@ -284,6 +289,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
@@ -302,6 +308,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		require.Equal(t, dlx, cons.dlxExchange)
 
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error { return nil })
 		go func() { _ = cons.Consume(context.Background()) }()
 		time.Sleep(50 * time.Millisecond)
@@ -320,6 +327,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
@@ -342,6 +350,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			return nil
 		})
@@ -380,6 +389,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 
 		done := make(chan struct{})
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			close(done)
 			return nil
@@ -434,6 +444,7 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(h)
 
 		ctx := context.Background()
@@ -479,10 +490,12 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
 			panic("some error")
 		}))
 		ctx := context.Background()
+		//nolint:errcheck
 		go cons.Consume(ctx)
 		ft.messages <- msg
 		time.Sleep(50 * time.Millisecond)
@@ -503,9 +516,11 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		//nolint:errcheck
 		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
 			panic("boom")
 		}))
+		//nolint:errcheck
 		go cons.Consume(context.Background())
 		ft.messages <- amqp.Delivery{Body: []byte("a"), RoutingKey: "rk", Acknowledger: ack1}
 		ft.messages <- amqp.Delivery{Body: []byte("b"), RoutingKey: "rk", Acknowledger: ack2}
@@ -530,6 +545,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(time.Hour))
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			require.Len(t, msgs, 1)
 			require.Equal(t, "rk", msgs[0].RoutingKey())
@@ -585,6 +601,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk0"))
 
 		done := make(chan struct{})
+		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error {
 			require.Len(t, msgs, 1)
 			require.Equal(t, "rk0", msgs[0].RoutingKey())
