@@ -6,10 +6,10 @@ require (
 	github.com/rabbitmq/amqp091-go v1.14.0
 	github.com/stretchr/testify v1.12.1
 	gitlab.com/gorib/failure v1.2.2
-	gitlab.com/gorib/hilton v1.1.2
+	gitlab.com/gorib/hilton v1.2.0
 	gitlab.com/gorib/pry v1.2.7
 	gitlab.com/gorib/session v1.1.2
-	gitlab.com/gorib/whisk v1.1.4
+	gitlab.com/gorib/whisk v1.1.6
 )
 
 require (

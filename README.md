@@ -130,9 +130,15 @@ Recovery is innermost on purpose: the panic has to become an error before
 tracing and logging see the result, otherwise the span would end unrecorded
 and the process would die.
 
-Batch-aware by design — the tracing span covers the whole batch and counts it
-as `len(msgs)` messages, and the active-calls counter unwinds in a `defer`, so
-a panic cannot leak the gauge.
+Batch-aware by design — the tracing span covers the whole batch, counts it as
+`len(msgs)` messages and records that count as `messaging.batch.message_count`,
+and the active-calls counter unwinds in a `defer`, so a panic cannot leak the
+gauge.
+
+A batch has many causes and a span has one parent, so the parent comes from the
+last message and every other message that carries a `traceparent` is attached as
+a span link tagged `messaging.batch.index`. With `pageSize == 1` there are no
+links and the span looks exactly as it did before.
 
 ## Publisher
 

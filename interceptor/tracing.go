@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/gorib/amqp"
+	"gitlab.com/gorib/amqp/model"
 	"gitlab.com/gorib/hilton"
 	"gitlab.com/gorib/session"
 )
@@ -20,8 +21,16 @@ func NewTracing(provider hilton.Provider) *tracingMW {
 	return &tracingMW{
 		provider: provider,
 		tracer:   provider.Tracer(instrumentationName),
-		duration: meter.Histogram("messaging.process.duration", hilton.WithDescription("Duration of AMQP message processing"), hilton.WithUnit("s")),
+		duration: meter.Histogram("messaging.process.duration",
+			hilton.WithDescription("Duration of AMQP message processing"),
+			hilton.WithUnit("s"),
+			hilton.WithSecondsBoundaries(),
+		),
 		messages: meter.Counter("messaging.client.consumed.messages", hilton.WithDescription("Number of AMQP messages consumed by the client")),
+		active: meter.UpDownCounter("messaging.process.active",
+			hilton.WithDescription("Number of AMQP messages being processed"),
+			hilton.WithUnit("1"),
+		),
 	}
 }
 
@@ -30,10 +39,31 @@ type tracingMW struct {
 	tracer   hilton.Tracer
 	duration hilton.Histogram
 	messages hilton.Counter
+	active   hilton.UpDownCounter
 }
 
 func (tracingMW) Name() string { return "tracing" }
 func (tracingMW) Order() int   { return 100 }
+
+// Only the last message becomes the parent, so the rest of a batch reach the
+// span as links — otherwise their traces lose the connection entirely.
+func batchLinks(msgs []amqp.Source) []hilton.Link {
+	if len(msgs) < 2 {
+		return nil
+	}
+	links := make([]hilton.Link, 0, len(msgs)-1)
+	for i, msg := range msgs[:len(msgs)-1] {
+		sc, ok := hilton.ParseTraceparent(msg.Header(model.TraceparentHeader))
+		if !ok {
+			continue
+		}
+		links = append(links, hilton.Link{
+			SpanContext: sc,
+			Attributes:  []hilton.Attribute{hilton.Attr("messaging.batch.index", i)},
+		})
+	}
+	return links
+}
 
 func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.Source) error {
 	return func(msgs []amqp.Source) error {
@@ -54,7 +84,9 @@ func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.S
 				hilton.Attr("messaging.system", "rabbitmq"),
 				hilton.Attr("messaging.rabbitmq.destination.routing_key", routingKey),
 				hilton.Attr("messaging.operation.type", "process"),
+				hilton.Attr("messaging.batch.message_count", len(msgs)),
 			),
+			hilton.WithLinks(batchLinks(msgs)...),
 		)
 		if s := session.FromContext(ctx); s != nil {
 			if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
@@ -65,6 +97,13 @@ func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.S
 		for i := range msgs {
 			msgs[i] = msgs[i].WithContext(ctx)
 		}
+
+		activeAttrs := []hilton.Attribute{
+			hilton.Attr("messaging.system", "rabbitmq"),
+			hilton.Attr("messaging.operation.type", "process"),
+		}
+		t.active.Add(ctx, int64(len(msgs)), activeAttrs...)
+		defer t.active.Add(ctx, -int64(len(msgs)), activeAttrs...) // deferred so a panic still unwinds it
 
 		start := time.Now()
 		err := next(msgs)
