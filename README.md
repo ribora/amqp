@@ -165,7 +165,9 @@ as `User-Agent`, `Accept-Language`, `Source-Ip`, `traceparent`, `tracestate`
 
 - No publisher confirms, no mandatory/immediate routing, no returns handling.
   A publish that the broker cannot route is silently lost.
-- No per-message acknowledgement — the unit of settlement is the batch.
+- Settlement is per page, not per message: `Ack`/`Nack` carry AMQP's `multiple`
+  flag as soon as a page holds more than one message. The default page size is 1,
+  so per-message settlement is what you get until `WithConsumerPageSize` raises it.
 - No topology beyond one exchange, one queue and its bindings per consumer.
   Overlapping routing keys are the caller's problem (scribus rejects them).
 - No reconnect on connection failure, only on the timer; an error from
