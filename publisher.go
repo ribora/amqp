@@ -17,6 +17,12 @@ const instrumentationName = "gitlab.com/gorib/amqp"
 
 type EncodedMessage []byte
 
+// Exists for the compile-time checks in recorder.go.
+type Publisher interface {
+	Publish(ctx context.Context, key string, document any) error
+	Close() error
+}
+
 type PublisherOptions func(*publisher) error
 
 func WithExchangeKind(kind string) PublisherOptions {

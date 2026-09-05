@@ -7,7 +7,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	gitlab.com/gorib/failure v1.2.2
 	gitlab.com/gorib/hilton v1.2.1
-	gitlab.com/gorib/pry v1.2.7
+	gitlab.com/gorib/pry v1.3.0
 	gitlab.com/gorib/session v1.1.2
 	gitlab.com/gorib/whisk v1.2.1
 )

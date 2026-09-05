@@ -46,19 +46,35 @@ func (s *deliverySource) Header(key string) string {
 }
 
 func (s *deliverySource) Lookup(scope, key string) string {
+	return lookup(s, scope, key)
+}
+
+func (s *deliverySource) LookupAll(scope, key string) []string {
+	return lookupAll(s, scope, key)
+}
+
+// One place for the scopes: a hand-assembled Source and one wrapping a delivery
+// must answer identically, or a scope added to one leaves the other short.
+type scoped interface {
+	Header(key string) string
+	RoutingKey() string
+	Exchange() string
+}
+
+func lookup(s scoped, scope, key string) string {
 	switch scope {
 	case "header":
 		return s.Header(key)
 	case "routing-key":
-		return s.d.RoutingKey
+		return s.RoutingKey()
 	case "exchange":
-		return s.d.Exchange
+		return s.Exchange()
 	}
 	return ""
 }
 
-func (s *deliverySource) LookupAll(scope, key string) []string {
-	if v := s.Lookup(scope, key); v != "" {
+func lookupAll(s scoped, scope, key string) []string {
+	if v := lookup(s, scope, key); v != "" {
 		return []string{v}
 	}
 	return nil
