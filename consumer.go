@@ -3,6 +3,7 @@ package amqp
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -104,10 +105,8 @@ func (c *consumer) Bind(routingKey string) error {
 	if routingKey == "" {
 		return errors.New("routing key is empty")
 	}
-	for _, k := range c.routingKeys {
-		if k == routingKey {
-			return nil
-		}
+	if slices.Contains(c.routingKeys, routingKey) {
+		return nil
 	}
 	c.routingKeys = append(c.routingKeys, routingKey)
 	return nil
