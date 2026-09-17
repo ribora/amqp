@@ -155,11 +155,13 @@ declared when the connection is established.
 written through untouched — for a payload that is already encoded, or encoded
 by something other than `encoding/json`.
 
-The span is `PRODUCER` kind, and its traceparent is mirrored back into the
-session before the headers are built, so the consumer downstream becomes a
-child of the publish rather than of the incoming request. Session fields go out
-as `User-Agent`, `Accept-Language`, `Source-Ip`, `traceparent`, `tracestate`
-(see `model`), with the correlation id in AMQP's own `CorrelationId` property.
+The span is `PRODUCER` kind, and its traceparent goes onto the publish
+context before the headers are built, so the consumer downstream becomes a
+child of the publish rather than of the incoming request. That context is local
+to the call, so the caller's own next outgoing call is still parented to the
+request. Session fields go out as `User-Agent`, `Accept-Language`, `Source-Ip`,
+and the trace context as `traceparent`, `tracestate` (see `model`), with the
+correlation id in AMQP's own `CorrelationId` property.
 
 ## What it does not do
 
