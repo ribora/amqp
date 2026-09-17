@@ -269,15 +269,14 @@ func TestConsumer(t *testing.T) {
 		cons.SetHandler(func(msgs []Source) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
-		time.Sleep(50 * time.Millisecond)
-		require.Len(t, ft.consumeArgs, 1)
-		require.Equal(t, "#", ft.consumeArgs[0].rk)
 		require.NoError(t, cons.Close())
 		select {
 		case <-done:
 		case <-time.After(2 * time.Second):
 			t.Fatal("consumer did not stop")
 		}
+		require.Len(t, ft.consumeArgs, 1)
+		require.Equal(t, "#", ft.consumeArgs[0].rk)
 	})
 
 	t.Run("ExchangeDeclareFail", func(t *testing.T) {
@@ -310,12 +309,18 @@ func TestConsumer(t *testing.T) {
 
 		//nolint:errcheck
 		cons.SetHandler(func(msgs []Source) error { return nil })
-		go func() { _ = cons.Consume(context.Background()) }()
-		time.Sleep(50 * time.Millisecond)
+		done := make(chan struct{})
+		go func() { _ = cons.Consume(context.Background()); close(done) }()
+
+		require.NoError(t, cons.Close())
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("consumer did not stop")
+		}
 
 		require.Contains(t, ft.exchangeDecls, dlx)
 		require.Contains(t, ft.exchangeDecls, "ex")
-		_ = cons.Close()
 	})
 
 	t.Run("ConsumeFail", func(t *testing.T) {
