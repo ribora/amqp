@@ -67,11 +67,8 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 		),
 	)
 	defer span.End()
-	// Mirror new traceparent into session so the header set below propagates it.
-	if s := session.FromContext(ctx); s != nil {
-		if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
-			s.Traceparent = tp
-		}
+	if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
+		ctx = session.WithTraceparent(ctx, tp)
 	}
 
 	defer func() {
@@ -112,11 +109,18 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 		if s.SourceIp != "" {
 			message.Headers[model.SourceIpHeader] = s.SourceIp
 		}
-		if s.Traceparent != "" {
-			message.Headers[model.TraceparentHeader] = s.Traceparent
+	}
+
+	traceparent, tracestate := session.TraceFromContext(ctx)
+	if traceparent != "" || tracestate != "" {
+		if message.Headers == nil {
+			message.Headers = amqp.Table{}
 		}
-		if s.Tracestate != "" {
-			message.Headers[model.TracestateHeader] = s.Tracestate
+		if traceparent != "" {
+			message.Headers[model.TraceparentHeader] = traceparent
+		}
+		if tracestate != "" {
+			message.Headers[model.TracestateHeader] = tracestate
 		}
 	}
 

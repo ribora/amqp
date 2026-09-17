@@ -88,10 +88,8 @@ func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.S
 			),
 			hilton.WithLinks(batchLinks(msgs)...),
 		)
-		if s := session.FromContext(ctx); s != nil {
-			if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
-				s.Traceparent = tp
-			}
+		if tp := hilton.FormatTraceparent(span.SpanContext()); tp != "" {
+			ctx = session.WithTraceparent(ctx, tp)
 		}
 
 		for i := range msgs {

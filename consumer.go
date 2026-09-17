@@ -215,7 +215,9 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 
 			sources := make([]Source, 0, len(batch))
 			for _, msg := range batch {
+				traceparent, tracestate := buildTrace(msg)
 				mctx := session.NewContextWithSession(ctx, buildSession(msg))
+				mctx = session.WithTrace(mctx, traceparent, tracestate)
 				mctx = ContextWithHeaders(mctx, msg.Headers)
 				sources = append(sources, newSource(mctx, msg))
 			}
@@ -252,13 +254,13 @@ func buildSession(msg amqp.Delivery) session.Session {
 	if sourceIp, ok := msg.Headers[model.SourceIpHeader].(string); ok {
 		s.SourceIp = sourceIp
 	}
-	if tp, ok := msg.Headers[model.TraceparentHeader].(string); ok {
-		s.Traceparent = tp
-	}
-	if ts, ok := msg.Headers[model.TracestateHeader].(string); ok {
-		s.Tracestate = ts
-	}
 	return s
+}
+
+func buildTrace(msg amqp.Delivery) (traceparent, tracestate string) {
+	traceparent, _ = msg.Headers[model.TraceparentHeader].(string)
+	tracestate, _ = msg.Headers[model.TracestateHeader].(string)
+	return traceparent, tracestate
 }
 
 func (c *consumer) Close() error {

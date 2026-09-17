@@ -8,7 +8,7 @@ require (
 	gitlab.com/gorib/failure v1.3.1
 	gitlab.com/gorib/hilton v1.2.3
 	gitlab.com/gorib/pry v1.4.0
-	gitlab.com/gorib/session v1.1.2
+	gitlab.com/gorib/session v1.2.0
 	gitlab.com/gorib/whisk v1.3.1
 )
 
