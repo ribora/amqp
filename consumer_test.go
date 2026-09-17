@@ -3,6 +3,7 @@ package amqp
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -437,6 +438,49 @@ func TestConsumer(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("consumer did not stop")
 		}
+		require.True(t, first.closed)
+	})
+
+	t.Run("ClosedDeliveryChannelReconnects", func(t *testing.T) {
+		created := recordTransports(t, func(n int) chan amqp.Delivery {
+			msgs := make(chan amqp.Delivery, 1)
+			if n == 0 {
+				// what amqp091 does when the connection or channel drops
+				close(msgs)
+			}
+			return msgs
+		})
+
+		cons, err := NewConsumer("amqp://", "ex", "q",
+			WithConsumerPageSize(1),
+			WithConsumerFlushInterval(time.Hour),
+		)
+		require.NoError(t, err)
+		require.NoError(t, cons.Bind("rk"))
+		// Long enough that only the closed channel can drive the reconnect.
+		require.NoError(t, cons.SetReconnectInterval(time.Hour))
+
+		var handlerCalls atomic.Int64
+		//nolint:errcheck
+		cons.SetHandler(func(msgs []Source) error {
+			handlerCalls.Add(1)
+			return nil
+		})
+
+		errCh := make(chan error, 1)
+		go func() { errCh <- cons.Consume(context.Background()) }()
+
+		first := nextTransport(t, created, "consumer did not connect")
+		nextTransport(t, created, "consumer did not reconnect after the delivery channel closed")
+
+		require.NoError(t, cons.Close())
+		select {
+		case <-errCh:
+		case <-time.After(2 * time.Second):
+			t.Fatal("consumer did not stop")
+		}
+
+		require.Zero(t, handlerCalls.Load(), "handler called on a closed delivery channel")
 		require.True(t, first.closed)
 	})
 

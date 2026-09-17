@@ -207,7 +207,16 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 				continue
 			}
 			needFlush = true
-		case message := <-messages:
+		case message, ok := <-messages:
+			if !ok {
+				// amqp091 closes this channel when the connection drops; every
+				// later receive returns a zero Delivery at once, so reconnect.
+				needReconnect = true
+				// Dropped, not flushed: the broker redelivers them on the new
+				// channel, so handling them here would double-process.
+				batch = batch[:0]
+				break
+			}
 			batch = append(batch, message)
 		}
 		if len(batch) >= int(c.pageSize) || needFlush && len(batch) > 0 {
