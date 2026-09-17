@@ -19,6 +19,31 @@ func initTransportFunc(t *testing.T, ft *mockTransport) *mockTransport {
 	return ft
 }
 
+// The channel handover orders a transport's fields against the consumer goroutine.
+func recordTransports(t *testing.T, messages func(n int) chan amqp.Delivery) <-chan *mockTransport {
+	t.Helper()
+	created := make(chan *mockTransport, 8)
+	n := 0
+	newTransportFunc = func(dsn string) (transportAPI, error) {
+		ft := &mockTransport{messages: messages(n)}
+		n++
+		created <- ft
+		return ft, nil
+	}
+	return created
+}
+
+func nextTransport(t *testing.T, created <-chan *mockTransport, expected string) *mockTransport {
+	t.Helper()
+	select {
+	case ft := <-created:
+		return ft
+	case <-time.After(2 * time.Second):
+		t.Fatal(expected)
+		return nil
+	}
+}
+
 type testRecover struct{}
 
 func (testRecover) Name() string { return "recover" }
@@ -340,14 +365,9 @@ func TestConsumer(t *testing.T) {
 	})
 
 	t.Run("FailsafeTimeout", func(t *testing.T) {
-		var transports []*mockTransport
-		calls := 0
-		newTransportFunc = func(dsn string) (transportAPI, error) {
-			calls++
-			ft := &mockTransport{messages: make(chan amqp.Delivery, 10)}
-			transports = append(transports, ft)
-			return ft, nil
-		}
+		created := recordTransports(t, func(int) chan amqp.Delivery {
+			return make(chan amqp.Delivery, 10)
+		})
 		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Hour),
@@ -363,28 +383,24 @@ func TestConsumer(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() { errCh <- cons.Consume(context.Background()) }()
 
-		time.Sleep(1200 * time.Millisecond)
-		require.NoError(t, cons.Close())
-		require.GreaterOrEqual(t, calls, 2)
+		first := nextTransport(t, created, "consumer did not connect")
+		second := nextTransport(t, created, "failsafe timeout did not force a reconnect")
 
+		require.NoError(t, cons.Close())
 		select {
 		case <-errCh:
 		case <-time.After(2 * time.Second):
 			t.Fatal("consumer did not stop")
 		}
 
-		for _, ft := range transports {
-			require.True(t, ft.closed)
-		}
+		require.True(t, first.closed)
+		require.True(t, second.closed)
 	})
 
 	t.Run("ReconnectAndProcessAfterTimeout", func(t *testing.T) {
-		var transports []*mockTransport
-		newTransportFunc = func(dsn string) (transportAPI, error) {
-			ft := &mockTransport{messages: make(chan amqp.Delivery, 10)}
-			transports = append(transports, ft)
-			return ft, nil
-		}
+		created := recordTransports(t, func(int) chan amqp.Delivery {
+			return make(chan amqp.Delivery, 10)
+		})
 		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Hour),
@@ -403,11 +419,11 @@ func TestConsumer(t *testing.T) {
 		errCh := make(chan error, 1)
 		go func() { errCh <- cons.Consume(context.Background()) }()
 
-		time.Sleep(1200 * time.Millisecond)
-		require.GreaterOrEqual(t, len(transports), 2)
+		first := nextTransport(t, created, "consumer did not connect")
+		second := nextTransport(t, created, "failsafe timeout did not force a reconnect")
 
 		ack := &mockAcker{}
-		transports[1].messages <- amqp.Delivery{Body: []byte("z"), RoutingKey: "rk", Acknowledger: ack}
+		second.messages <- amqp.Delivery{Body: []byte("z"), RoutingKey: "rk", Acknowledger: ack}
 
 		select {
 		case <-done:
@@ -421,7 +437,7 @@ func TestConsumer(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("consumer did not stop")
 		}
-		require.True(t, transports[0].closed)
+		require.True(t, first.closed)
 	})
 
 	t.Run("Ack", func(t *testing.T) {
