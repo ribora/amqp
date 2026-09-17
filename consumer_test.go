@@ -511,16 +511,29 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		handled := make(chan struct{})
 		//nolint:errcheck
 		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
+			close(handled)
 			panic("some error")
 		}))
 		ctx := context.Background()
-		//nolint:errcheck
-		go cons.Consume(ctx)
+		errCh := make(chan error, 1)
+		go func() { errCh <- cons.Consume(ctx) }()
 		ft.messages <- msg
-		time.Sleep(50 * time.Millisecond)
-		_ = cons.Close()
+
+		select {
+		case <-handled:
+		case <-time.After(2 * time.Second):
+			t.Fatal("handler not called in time")
+		}
+		require.NoError(t, cons.Close())
+		select {
+		case <-errCh:
+		case <-time.After(2*time.Second + retrySleep):
+			t.Fatal("consumer did not stop")
+		}
+
 		require.Equal(t, 1, ack.nackCalls)
 		require.Equal(t, 0, ack.ackCalls)
 		require.True(t, ack.lastRequeue)
@@ -537,16 +550,29 @@ func TestConsumer(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
+		handled := make(chan struct{})
 		//nolint:errcheck
 		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
+			close(handled)
 			panic("boom")
 		}))
-		//nolint:errcheck
-		go cons.Consume(context.Background())
+		errCh := make(chan error, 1)
+		go func() { errCh <- cons.Consume(context.Background()) }()
 		ft.messages <- amqp.Delivery{Body: []byte("a"), RoutingKey: "rk", Acknowledger: ack1}
 		ft.messages <- amqp.Delivery{Body: []byte("b"), RoutingKey: "rk", Acknowledger: ack2}
-		time.Sleep(50 * time.Millisecond)
-		_ = cons.Close()
+
+		select {
+		case <-handled:
+		case <-time.After(2 * time.Second):
+			t.Fatal("batched handler not called in time")
+		}
+		require.NoError(t, cons.Close())
+		select {
+		case <-errCh:
+		case <-time.After(2*time.Second + retrySleep):
+			t.Fatal("consumer did not stop")
+		}
+
 		require.Equal(t, 0, ack1.nackCalls)
 		require.Equal(t, 1, ack2.nackCalls)
 		require.True(t, ack2.lastMultiple)
