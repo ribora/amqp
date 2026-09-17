@@ -1,11 +1,11 @@
 package interceptor
 
 import (
-	"fmt"
 	"time"
 
 	"gitlab.com/gorib/amqp"
 	"gitlab.com/gorib/amqp/model"
+	"gitlab.com/gorib/failure"
 	"gitlab.com/gorib/hilton"
 	"gitlab.com/gorib/session"
 )
@@ -44,6 +44,18 @@ type tracingMW struct {
 
 func (tracingMW) Name() string { return "tracing" }
 func (tracingMW) Order() int   { return 100 }
+
+const otherErrorType = "_OTHER"
+
+func errorType(err error) string {
+	if err == nil {
+		return ""
+	}
+	if fe, ok := failure.FromError(err); ok {
+		return fe.Type()
+	}
+	return otherErrorType
+}
 
 // Only the last message becomes the parent, so the rest of a batch reach the
 // span as links — otherwise their traces lose the connection entirely.
@@ -114,7 +126,7 @@ func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.S
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(hilton.StatusError, err.Error())
-			attrs = append(attrs, hilton.Attr("error.type", fmt.Sprintf("%T", err)))
+			attrs = append(attrs, hilton.Attr("error.type", errorType(err)))
 		}
 		span.End()
 
