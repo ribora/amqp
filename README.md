@@ -34,7 +34,7 @@ Defaults: `topic` exchange, page size 1, flush interval 5s, failsafe timeout
 `Bind` is required — `Consume` refuses to start without at least one routing
 key, because a queue bound to nothing silently receives nothing. Keys are
 de-duplicated locally; `""` is rejected, so fan-out has to be spelled `#`.
-Options that take a duration reject anything under a second.
+Consumer options that take a duration reject anything under a second.
 
 ### Batching
 
@@ -160,8 +160,23 @@ err := p.Publish(ctx, "order.created", event)
 ```
 
 The transport is created on first publish and kept; if a publish fails the
-transport is closed and dropped, so the next call redials. The exchange is
-declared when the connection is established.
+transport is closed and dropped, so the next call redials. The channel is put
+into confirm mode and the exchange is declared when the connection is
+established — a transport whose setup fails is closed rather than cached.
+
+`Publish` returns once the broker has confirmed the publishing, not once the
+frame is on the socket. A negative confirmation is `ErrNotConfirmed`, and a wait
+that runs out returns the context's error wrapped as `rabbit confirm:`. Both drop
+the transport, the same way a publish error does, because the confirmation is
+bound to the channel: one that stopped answering will not answer the next publish
+either. `ErrNotConfirming` means the channel was never put into confirm mode —
+amqp091 signals that by returning a nil confirmation and no error, which would
+otherwise read as success.
+
+The wait is bounded by `WithConfirmTimeout`, five seconds by default, or by the
+caller's context when that expires first. Zero disables the publisher's own bound
+and leaves only the context. Some bound is needed: on a connection that dies
+without closing, nothing resolves the confirmation until the heartbeat expires.
 
 `document` is JSON-marshalled unless it is an `amqp.EncodedMessage`, which is
 written through untouched — for a payload that is already encoded, or encoded
@@ -177,8 +192,9 @@ correlation id in AMQP's own `CorrelationId` property.
 
 ## What it does not do
 
-- No publisher confirms, no mandatory/immediate routing, no returns handling.
-  A publish that the broker cannot route is silently lost.
+- No mandatory/immediate routing and no returns handling. A confirm says the
+  broker accepted the publishing, not that it reached a queue: an unroutable
+  message is confirmed and dropped, and nothing here notices.
 - Settlement is per page, not per message: `Ack`/`Nack` carry AMQP's `multiple`
   flag as soon as a page holds more than one message. The default page size is 1,
   so per-message settlement is what you get until `WithConsumerPageSize` raises it.
@@ -196,5 +212,7 @@ correlation id in AMQP's own `CorrelationId` property.
 | File | What it pins down |
 |---|---|
 | `consumer_test.go` | batching and flush behaviour, ack/nack, binding validation, reconnect on the timer and on a closed channel |
-| `publisher_test.go` | payload encoding, session headers, transport reuse and drop-on-error |
-| `transport_test.go` | declare/bind/qos calls against a mocked channel |
+| `publisher_test.go` | payload encoding, session headers, transport reuse, drop-on-error, and the confirm wait |
+| `transport_test.go` | declare/bind/qos calls against a mocked channel, and confirm mode |
+| `delivery_test.go` | the scopes a `Source` answers, `WithContext` copying rather than mutating, and the publisher recorder |
+| `interceptor/tracing_test.go` | the `error.type` attribute on `messaging.process.duration`: a `failure` type, `panic` through `NewRecover`, and the `_OTHER` fallback |
