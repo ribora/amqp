@@ -169,6 +169,14 @@ func TestConsumer(t *testing.T) {
 		require.ErrorContains(t, err, "flush interval")
 	})
 
+	t.Run("InvalidConstructorFailsafeTimeout", func(t *testing.T) {
+		_, err := NewConsumer("amqp://", "ex", "q",
+			WithConsumerFailsafeTimeout(500*time.Millisecond),
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "reconnect interval")
+	})
+
 	t.Run("InvalidIntervals", func(t *testing.T) {
 		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),

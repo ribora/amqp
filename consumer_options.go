@@ -12,8 +12,7 @@ type ConsumerOptions func(*consumer) error
 
 func WithConsumerFailsafeTimeout(timeout time.Duration) ConsumerOptions {
 	return func(c *consumer) error {
-		c.failsafeTimeout = timeout
-		return nil
+		return c.SetReconnectInterval(timeout)
 	}
 }
 
