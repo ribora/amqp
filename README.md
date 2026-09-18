@@ -38,6 +38,13 @@ Options that take a duration reject anything under a second.
 
 ### Batching
 
+A page is for work that is cheaper in bulk — one multi-row insert, one bulk
+index request, one aggregated write. Raising `pageSize` to fetch fifty messages
+and then loop over them one at a time is the wrong use: the page settles as a
+unit, so one bad message requeues the other forty-nine, and every message waits
+for the page to fill or the ticker to fire before it is touched. If the work is
+per-message, leave the page size at 1.
+
 The loop accumulates deliveries until one of three things happens: the batch
 reaches `pageSize`, the flush ticker fires, or the consumer is stopping. With
 `pageSize == 1` the ticker is ignored — a single message is dispatched as soon
