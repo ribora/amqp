@@ -3,6 +3,7 @@ package amqp
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,9 +15,18 @@ import (
 	"gitlab.com/gorib/session"
 )
 
+// The only way to install a transport func: assigning the global directly
+// leaves it pointing at a finished subtest's mock.
+func swapTransportFunc(t *testing.T, fn func(dsn string) (transportAPI, error)) {
+	t.Helper()
+	previous := newTransportFunc
+	t.Cleanup(func() { newTransportFunc = previous })
+	newTransportFunc = fn
+}
+
 func initTransportFunc(t *testing.T, ft *mockTransport) *mockTransport {
 	t.Helper()
-	newTransportFunc = func(dsn string) (transportAPI, error) { return ft, nil }
+	swapTransportFunc(t, func(dsn string) (transportAPI, error) { return ft, nil })
 	return ft
 }
 
@@ -25,12 +35,12 @@ func recordTransports(t *testing.T, messages func(n int) chan amqp.Delivery) <-c
 	t.Helper()
 	created := make(chan *mockTransport, 8)
 	n := 0
-	newTransportFunc = func(dsn string) (transportAPI, error) {
+	swapTransportFunc(t, func(dsn string) (transportAPI, error) {
 		ft := &mockTransport{messages: messages(n)}
 		n++
 		created <- ft
 		return ft, nil
-	}
+	})
 	return created
 }
 
@@ -58,6 +68,21 @@ func (testRecover) Wrap(next func(msgs []Source) error) func(msgs []Source) erro
 			}
 		}()
 		return next(msgs)
+	}
+}
+
+func TestSwapTransportFuncRestoresAfterSubtest(t *testing.T) {
+	original := newTransportFunc
+
+	t.Run("swaps", func(t *testing.T) {
+		swapTransportFunc(t, func(dsn string) (transportAPI, error) { return nil, nil })
+		if reflect.ValueOf(newTransportFunc).Pointer() == reflect.ValueOf(original).Pointer() {
+			t.Fatal("transport func not swapped")
+		}
+	})
+
+	if reflect.ValueOf(newTransportFunc).Pointer() != reflect.ValueOf(original).Pointer() {
+		t.Error("transport func leaked out of the subtest")
 	}
 }
 
@@ -269,7 +294,7 @@ func TestConsumer(t *testing.T) {
 	})
 
 	t.Run("WrongTransport", func(t *testing.T) {
-		newTransportFunc = func(dsn string) (transportAPI, error) { return nil, errors.New("error") }
+		swapTransportFunc(t, func(dsn string) (transportAPI, error) { return nil, errors.New("error") })
 		cons, err := NewConsumer("amqp://", "ex", "q",
 			WithConsumerPageSize(1),
 			WithConsumerFlushInterval(time.Second),
