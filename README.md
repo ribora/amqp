@@ -182,6 +182,8 @@ correlation id in AMQP's own `CorrelationId` property.
 - Settlement is per page, not per message: `Ack`/`Nack` carry AMQP's `multiple`
   flag as soon as a page holds more than one message. The default page size is 1,
   so per-message settlement is what you get until `WithConsumerPageSize` raises it.
+- A failed acknowledgement is not reported: `Ack`/`Nack` errors are discarded, so
+  a settlement the broker refused looks exactly like one it accepted.
 - No topology beyond one exchange, one queue and its bindings per consumer.
   Overlapping routing keys are the caller's problem (scribus rejects them).
 - No reconnect on an error from `Consume`; that propagates and the caller
