@@ -45,6 +45,7 @@ type mockChan struct {
 		mandatory, immediate bool
 		msg                  amqp.Publishing
 	}
+	confirms int
 
 	// Behavior controls
 	exchangeErr     error
@@ -54,6 +55,8 @@ type mockChan struct {
 	consumeErr      error
 	deliveries      chan amqp.Delivery
 	publishErr      error
+	confirmErr      error
+	notConfirming   bool
 }
 
 func (c *mockChan) ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
@@ -104,11 +107,23 @@ func (c *mockChan) Consume(queue, consumer string, autoAck, exclusive, noLocal, 
 	}
 	return c.deliveries, nil
 }
-func (c *mockChan) PublishWithContext(_ context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+func (c *mockChan) Confirm(noWait bool) error {
+	c.confirms++
+	return c.confirmErr
+}
+func (c *mockChan) PublishWithDeferredConfirmWithContext(_ context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) (*amqp.DeferredConfirmation, error) {
 	c.publishes = append(c.publishes, struct {
 		exchange, key        string
 		mandatory, immediate bool
 		msg                  amqp.Publishing
 	}{exchange, key, mandatory, immediate, msg})
-	return c.publishErr
+	if c.publishErr != nil {
+		return nil, c.publishErr
+	}
+	if c.notConfirming {
+		return nil, nil
+	}
+	// done is unexported, so it stays nil and this confirmation can never resolve.
+	// Waiting is covered through mockConfirmation.
+	return &amqp.DeferredConfirmation{DeliveryTag: uint64(len(c.publishes))}, nil
 }

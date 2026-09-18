@@ -50,16 +50,27 @@ type mockTransport struct {
 	}
 	closed bool
 
+	confirmCalls int
+
 	exchangeErr error
 	consumeErr  error
+	confirmErr  error
 	// publishErrs provides errors for sequential PublishWithContext calls
-	publishErrs    []error
+	publishErrs []error
+	// confirmations answers sequential PublishWithContext calls; past its end the
+	// broker acks.
+	confirmations  []Confirmation
 	publishCallCnt int
 }
 
 func (f *mockTransport) ExchangeDeclare(exchange, kind string) error {
 	f.exchangeDecls = append(f.exchangeDecls, exchange)
 	return f.exchangeErr
+}
+
+func (f *mockTransport) Confirm() error {
+	f.confirmCalls++
+	return f.confirmErr
 }
 
 func (f *mockTransport) Consume(queue string, routingKeys []string, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error) {
@@ -73,17 +84,35 @@ func (f *mockTransport) Consume(queue string, routingKeys []string, exchange str
 	return f.messages, nil
 }
 
-func (f *mockTransport) PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) error {
+func (f *mockTransport) PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) (Confirmation, error) {
 	f.published = append(f.published, struct {
 		ex, key string
 		msg     amqp.Publishing
 	}{exchange, id, message})
-	if f.publishCallCnt < len(f.publishErrs) {
-		err := f.publishErrs[f.publishCallCnt]
-		f.publishCallCnt++
-		return err
+	call := f.publishCallCnt
+	f.publishCallCnt++
+	if call < len(f.publishErrs) && f.publishErrs[call] != nil {
+		return nil, f.publishErrs[call]
 	}
-	return nil
+	if call < len(f.confirmations) {
+		return f.confirmations[call], nil
+	}
+	return &mockConfirmation{acked: true}, nil
 }
 
 func (f *mockTransport) Close() error { f.closed = true; return nil }
+
+// mockConfirmation satisfies Confirmation. With block set it never resolves on its
+// own, which is the partitioned-connection case the wait has to bound.
+type mockConfirmation struct {
+	acked bool
+	block bool
+}
+
+func (c *mockConfirmation) WaitContext(ctx context.Context) (bool, error) {
+	if c.block {
+		<-ctx.Done()
+		return false, ctx.Err()
+	}
+	return c.acked, nil
+}

@@ -3,8 +3,10 @@ package amqp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
@@ -14,6 +16,17 @@ import (
 )
 
 const instrumentationName = "gitlab.com/gorib/amqp"
+
+// Some bound is needed: on a connection that dies without closing, nothing
+// resolves the confirmation until the heartbeat expires, a minute and more.
+const defaultConfirmTimeout = 5 * time.Second
+
+var (
+	// The broker answered, and the answer was no.
+	ErrNotConfirmed = errors.New("rabbit confirm: the broker did not acknowledge the publishing")
+	// The channel was never put into confirm mode, so no answer is coming.
+	ErrNotConfirming = errors.New("rabbit confirm: the channel is not in confirm mode")
+)
 
 type EncodedMessage []byte
 
@@ -32,11 +45,20 @@ func WithExchangeKind(kind string) PublisherOptions {
 	}
 }
 
+// Zero or less leaves the wait bounded only by the context the caller passes.
+func WithConfirmTimeout(timeout time.Duration) PublisherOptions {
+	return func(p *publisher) error {
+		p.confirmTimeout = timeout
+		return nil
+	}
+}
+
 func NewPublisher(dsn, exchange string, opts ...PublisherOptions) (*publisher, error) {
 	p := &publisher{
-		dsn:          dsn,
-		exchange:     exchange,
-		exchangeKind: "topic",
+		dsn:            dsn,
+		exchange:       exchange,
+		exchangeKind:   "topic",
+		confirmTimeout: defaultConfirmTimeout,
 	}
 	for _, opt := range opts {
 		if err := opt(p); err != nil {
@@ -47,9 +69,10 @@ func NewPublisher(dsn, exchange string, opts ...PublisherOptions) (*publisher, e
 }
 
 type publisher struct {
-	dsn          string
-	exchange     string
-	exchangeKind string
+	dsn            string
+	exchange       string
+	exchangeKind   string
+	confirmTimeout time.Duration
 
 	tr       transportAPI
 	trLocker sync.Mutex
@@ -139,21 +162,48 @@ func (r *publisher) Publish(ctx context.Context, key string, document any) (err 
 		}
 	}()
 
-	return tr.PublishWithContext(ctx, r.exchange, key, message)
+	confirmation, err := tr.PublishWithContext(ctx, r.exchange, key, message)
+	if err != nil {
+		return err
+	}
+
+	wait := ctx
+	if r.confirmTimeout > 0 {
+		var cancel context.CancelFunc
+		wait, cancel = context.WithTimeout(ctx, r.confirmTimeout)
+		defer cancel()
+	}
+	acked, err := confirmation.WaitContext(wait)
+	if err != nil {
+		return fmt.Errorf("rabbit confirm: %w", err)
+	}
+	if !acked {
+		return ErrNotConfirmed
+	}
+	return nil
 }
 
-func (r *publisher) transport() (_ transportAPI, err error) {
+func (r *publisher) transport() (transportAPI, error) {
 	r.trLocker.Lock()
 	defer r.trLocker.Unlock()
 	if r.tr != nil {
 		return r.tr, nil
 	}
-	r.tr, err = newTransportFunc(r.dsn)
+	tr, err := newTransportFunc(r.dsn)
 	if err != nil {
 		return nil, err
 	}
-	err = r.tr.ExchangeDeclare(r.exchange, r.exchangeKind)
-	return r.tr, err
+	// Not in newTransport: the consumer shares that constructor and never publishes.
+	if err = tr.Confirm(); err != nil {
+		_ = tr.Close()
+		return nil, err
+	}
+	if err = tr.ExchangeDeclare(r.exchange, r.exchangeKind); err != nil {
+		_ = tr.Close()
+		return nil, err
+	}
+	r.tr = tr
+	return tr, nil
 }
 
 func (r *publisher) Close() error {

@@ -75,7 +75,9 @@ func TestTransport(t *testing.T) {
 
 		ctx := context.Background()
 		msg := amqp.Publishing{ContentType: "text/plain", Body: []byte("hello")}
-		require.NoError(t, tr.PublishWithContext(ctx, "ex", "key", msg))
+		confirmation, err := tr.PublishWithContext(ctx, "ex", "key", msg)
+		require.NoError(t, err)
+		require.NotNil(t, confirmation)
 		require.Len(t, ch.publishes, 1)
 		p := ch.publishes[0]
 		require.Equal(t, "ex", p.exchange)
@@ -83,6 +85,43 @@ func TestTransport(t *testing.T) {
 		require.False(t, p.mandatory)
 		require.False(t, p.immediate)
 		require.Equal(t, msg, p.msg)
+	})
+
+	t.Run("PublishError", func(t *testing.T) {
+		fc := &mockConn{}
+		ch := &mockChan{publishErr: errors.New("boom")}
+		tr := &transport{connection: fc, channel: ch}
+
+		confirmation, err := tr.PublishWithContext(context.Background(), "ex", "key", amqp.Publishing{})
+		require.ErrorContains(t, err, "boom")
+		require.Nil(t, confirmation)
+	})
+
+	t.Run("PublishNotConfirming", func(t *testing.T) {
+		fc := &mockConn{}
+		ch := &mockChan{notConfirming: true}
+		tr := &transport{connection: fc, channel: ch}
+
+		confirmation, err := tr.PublishWithContext(context.Background(), "ex", "key", amqp.Publishing{})
+		require.ErrorIs(t, err, ErrNotConfirming)
+		require.Nil(t, confirmation)
+	})
+
+	t.Run("Confirm", func(t *testing.T) {
+		fc := &mockConn{}
+		ch := &mockChan{}
+		tr := &transport{connection: fc, channel: ch}
+
+		require.NoError(t, tr.Confirm())
+		require.Equal(t, 1, ch.confirms)
+	})
+
+	t.Run("ConfirmErr", func(t *testing.T) {
+		fc := &mockConn{}
+		ch := &mockChan{confirmErr: errors.New("boom")}
+		tr := &transport{connection: fc, channel: ch}
+
+		require.ErrorContains(t, tr.Confirm(), "rabbit confirm mode:")
 	})
 
 	t.Run("QueueDeclareError", func(t *testing.T) {

@@ -7,10 +7,16 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// Confirmation is the broker's answer to one publishing.
+type Confirmation interface {
+	WaitContext(ctx context.Context) (acked bool, err error)
+}
+
 type transportAPI interface {
 	ExchangeDeclare(exchange, kind string) error
+	Confirm() error
 	Consume(queue string, routingKeys []string, exchange string, prefetchCount uint16, args amqp.Table) (<-chan amqp.Delivery, error)
-	PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) error
+	PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) (Confirmation, error)
 	Close() error
 }
 
@@ -28,7 +34,8 @@ type amqpChannel interface {
 	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
 	Qos(prefetchCount, prefetchSize int, global bool) error
 	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
-	PublishWithContext(_ context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+	Confirm(noWait bool) error
+	PublishWithDeferredConfirmWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) (*amqp.DeferredConfirmation, error)
 }
 
 func newTransport(dsn string) (*transport, error) {
@@ -84,8 +91,23 @@ func (t *transport) Consume(queue string, routingKeys []string, exchange string,
 	return t.channel.Consume(queue, "", false, false, false, false, nil)
 }
 
-func (t *transport) PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) error {
-	return t.channel.PublishWithContext(ctx, exchange, id, false, false, message)
+func (t *transport) Confirm() error {
+	if err := t.channel.Confirm(false); err != nil {
+		return fmt.Errorf("rabbit confirm mode: %w", err)
+	}
+	return nil
+}
+
+func (t *transport) PublishWithContext(ctx context.Context, exchange string, id string, message amqp.Publishing) (Confirmation, error) {
+	confirmation, err := t.channel.PublishWithDeferredConfirmWithContext(ctx, exchange, id, false, false, message)
+	if err != nil {
+		return nil, err
+	}
+	// amqp091 returns nil with no error when the channel is not in confirm mode.
+	if confirmation == nil {
+		return nil, ErrNotConfirming
+	}
+	return confirmation, nil
 }
 
 func (t *transport) Close() error {
