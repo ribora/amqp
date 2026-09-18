@@ -69,6 +69,11 @@ guard, not error handling — it recovers a connection that has gone quiet
 without reporting an error. `Close` stops the loop for good (idempotent, via
 `sync.Once`), and `Consume` returns nil.
 
+It also reconnects when the broker closes the delivery channel, which is how
+amqp091 reports a dropped connection. The pending batch is dropped rather than
+flushed: those deliveries are redelivered on the new channel, and handling them
+first would double-process them.
+
 ### Queue arguments
 
 `WithConsumerQueueArguments` takes a `QueueConfig` (alias of `model.Queue`) and
@@ -172,14 +177,15 @@ correlation id in AMQP's own `CorrelationId` property.
   so per-message settlement is what you get until `WithConsumerPageSize` raises it.
 - No topology beyond one exchange, one queue and its bindings per consumer.
   Overlapping routing keys are the caller's problem (scribus rejects them).
-- No reconnect on connection failure, only on the timer; an error from
-  `Consume` propagates and the caller decides.
+- No reconnect on an error from `Consume`; that propagates and the caller
+  decides. The loop reconnects only on the timer and on a closed delivery
+  channel.
 - `ContentType` is always `text/plain`, even for JSON bodies.
 
 ## Tests
 
 | File | What it pins down |
 |---|---|
-| `consumer_test.go` | batching and flush behaviour, ack/nack, binding validation, reconnect |
+| `consumer_test.go` | batching and flush behaviour, ack/nack, binding validation, reconnect on the timer and on a closed channel |
 | `publisher_test.go` | payload encoding, session headers, transport reuse and drop-on-error |
 | `transport_test.go` | declare/bind/qos calls against a mocked channel |
