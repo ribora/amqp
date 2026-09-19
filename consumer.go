@@ -3,6 +3,7 @@ package amqp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"gitlab.com/gorib/amqp/model"
 	"gitlab.com/gorib/session"
+	"gitlab.com/gorib/whisk/scan"
 )
 
 var (
@@ -64,14 +66,29 @@ type consumer struct {
 
 	stop    chan struct{}
 	stopper sync.Once
-	handler func(msgs []Source) error
+	handler func(msgs []scan.Source) error
 
 	tr transportAPI
 }
 
-func (c *consumer) SetHandler(handler func(msgs []Source) error) error {
+func (c *consumer) SetHandler(handler func(msgs []scan.Source) error) error {
 	c.handler = handler
 	return nil
+}
+
+func (c *consumer) Params() []string { return []string{"dsn", "exchange", "queue"} }
+
+func (c *consumer) Apply(args []string) error {
+	if len(args) != 3 {
+		return fmt.Errorf("amqp: expected %v, got %d values", c.Params(), len(args))
+	}
+	if err := c.SetDsn(args[0]); err != nil {
+		return err
+	}
+	if err := c.SetExchange(args[1]); err != nil {
+		return err
+	}
+	return c.SetQueue(args[2])
 }
 
 func (c *consumer) SetDsn(dsn string) error {
@@ -222,10 +239,11 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 		if len(batch) >= int(c.pageSize) || needFlush && len(batch) > 0 {
 			lastMsg := batch[len(batch)-1]
 
-			sources := make([]Source, 0, len(batch))
+			sources := make([]scan.Source, 0, len(batch))
+			alone := len(batch) == 1
 			for _, msg := range batch {
 				traceparent, tracestate := buildTrace(msg)
-				mctx := session.NewContextWithSession(ctx, buildSession(msg))
+				mctx := session.NewContextWithSession(ctx, buildSession(msg, alone))
 				mctx = session.WithTrace(mctx, traceparent, tracestate)
 				mctx = ContextWithHeaders(mctx, msg.Headers)
 				sources = append(sources, newSource(mctx, msg))
@@ -247,12 +265,14 @@ func (c *consumer) consume(ctx context.Context) (_ bool, err error) {
 	}
 }
 
-func buildSession(msg amqp.Delivery) session.Session {
+func buildSession(msg amqp.Delivery, alone bool) session.Session {
 	s := session.Session{
 		Uri:           msg.RoutingKey,
 		Method:        "AMQP",
-		Body:          string(msg.Body),
 		CorrelationId: msg.CorrelationId,
+	}
+	if alone {
+		s.Body = string(msg.Body)
 	}
 	if userAgent, ok := msg.Headers[model.UserAgentHeader].(string); ok {
 		s.UserAgent = userAgent

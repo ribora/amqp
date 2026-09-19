@@ -8,6 +8,7 @@ import (
 	"gitlab.com/gorib/amqp"
 	"gitlab.com/gorib/failure"
 	"gitlab.com/gorib/hilton"
+	"gitlab.com/gorib/whisk/scan"
 )
 
 const processDuration = "messaging.process.duration"
@@ -16,13 +17,29 @@ var errNotFound = failure.New("resource not found")
 
 type source struct{ ctx context.Context }
 
-func (s source) Context() context.Context       { return s.ctx }
-func (s source) Body() []byte                   { return nil }
-func (s source) Lookup(_, _ string) string      { return "" }
-func (s source) LookupAll(_, _ string) []string { return nil }
-func (s source) RoutingKey() string             { return "orders.created" }
-func (s source) Exchange() string               { return "orders" }
-func (s source) Header(string) string           { return "" }
+func (s source) Context() context.Context { return s.ctx }
+func (s source) Body() []byte             { return nil }
+func (s source) RoutingKey() string       { return "orders.created" }
+func (s source) Exchange() string         { return "orders" }
+func (s source) Header(string) string     { return "" }
+
+func (s source) Lookup(scope, _ string) string {
+	switch scope {
+	case "routing-key":
+		return s.RoutingKey()
+	case "exchange":
+		return s.Exchange()
+	}
+	return ""
+}
+
+func (s source) LookupAll(scope, key string) []string {
+	if v := s.Lookup(scope, key); v != "" {
+		return []string{v}
+	}
+	return nil
+}
+
 func (s source) WithContext(ctx context.Context) amqp.Source {
 	return source{ctx: ctx}
 }
@@ -31,7 +48,7 @@ func tracedErrorType(t *testing.T, handlerErr error, panicWith any) any {
 	t.Helper()
 
 	rec := hilton.Recorder()
-	handler := func([]amqp.Source) error {
+	handler := func([]scan.Source) error {
 		if panicWith != nil {
 			panic(panicWith)
 		}
@@ -41,7 +58,7 @@ func tracedErrorType(t *testing.T, handlerErr error, panicWith any) any {
 		handler = NewRecover().Wrap(handler)
 	}
 
-	_ = NewTracing(rec).Wrap(handler)([]amqp.Source{source{ctx: context.Background()}})
+	_ = NewTracing(rec).Wrap(handler)([]scan.Source{source{ctx: context.Background()}})
 
 	for _, m := range rec.Measurements() {
 		if m.Instrument != processDuration {

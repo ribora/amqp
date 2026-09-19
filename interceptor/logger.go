@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/gorib/amqp"
 	"gitlab.com/gorib/pry"
+	"gitlab.com/gorib/whisk/scan"
 )
 
 func NewLog(logger pry.Logger) *logMW {
@@ -18,12 +19,12 @@ type logMW struct {
 func (logMW) Name() string { return "log" }
 func (logMW) Order() int   { return 400 }
 
-func (l *logMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.Source) error {
-	return func(msgs []amqp.Source) error {
+func (l *logMW) Wrap(next func(msgs []scan.Source) error) func(msgs []scan.Source) error {
+	return func(msgs []scan.Source) error {
 		for i := range msgs {
 			ctx := pry.ContextWithLogger(msgs[i].Context(), l.logger)
-			msgs[i] = msgs[i].WithContext(ctx)
-			l.logger.Trace(fmt.Sprintf("%s >> %s", msgs[i].RoutingKey(), string(msgs[i].Body())), pry.Ctx(ctx))
+			msgs[i] = withContext(ctx, msgs[i])
+			l.logger.Trace(fmt.Sprintf("%s >> %s", amqp.RoutingKey(msgs[i]), string(msgs[i].Body())), pry.Ctx(ctx))
 		}
 
 		err := next(msgs)

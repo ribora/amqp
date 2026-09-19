@@ -13,6 +13,7 @@ import (
 
 	"gitlab.com/gorib/amqp/model"
 	"gitlab.com/gorib/session"
+	"gitlab.com/gorib/whisk/scan"
 )
 
 // The only way to install a transport func: assigning the global directly
@@ -60,8 +61,8 @@ type testRecover struct{}
 func (testRecover) Name() string { return "recover" }
 func (testRecover) Order() int   { return 500 }
 
-func (testRecover) Wrap(next func(msgs []Source) error) func(msgs []Source) error {
-	return func(msgs []Source) (err error) {
+func (testRecover) Wrap(next func(msgs []scan.Source) error) func(msgs []scan.Source) error {
+	return func(msgs []scan.Source) (err error) {
 		defer func() {
 			if r := recover(); r != nil && err == nil {
 				err = errors.New("panic")
@@ -197,7 +198,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetExchange(""))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error { return nil })
+		cons.SetHandler(func(msgs []scan.Source) error { return nil })
 		require.ErrorContains(t, cons.Consume(context.Background()), "invalid consumer config")
 	})
 
@@ -224,9 +225,9 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		done := make(chan struct{})
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			require.Len(t, msgs, 1)
-			require.Equal(t, "service.action", msgs[0].RoutingKey())
+			require.Equal(t, "service.action", Subjects().Of(msgs[0]))
 			require.Equal(t, []byte("{\"ok\":true}"), msgs[0].Body())
 			s := session.FromContext(msgs[0].Context())
 			require.NotNil(t, s)
@@ -272,7 +273,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			require.Len(t, msgs, 2)
 			// Each delivery now carries its own session, even in a batch.
 			require.NotNil(t, session.FromContext(msgs[0].Context()))
@@ -310,7 +311,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
@@ -325,7 +326,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("#"))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error { return nil })
+		cons.SetHandler(func(msgs []scan.Source) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
 		require.NoError(t, cons.Close())
@@ -348,7 +349,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
@@ -367,7 +368,7 @@ func TestConsumer(t *testing.T) {
 		require.Equal(t, dlx, cons.dlxExchange)
 
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error { return nil })
+		cons.SetHandler(func(msgs []scan.Source) error { return nil })
 		done := make(chan struct{})
 		go func() { _ = cons.Consume(context.Background()); close(done) }()
 
@@ -392,7 +393,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, cons.Bind("rk"))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			return nil
 		})
 		require.ErrorContains(t, cons.Consume(context.Background()), "error")
@@ -410,7 +411,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(1*time.Second))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			return nil
 		})
 
@@ -445,7 +446,7 @@ func TestConsumer(t *testing.T) {
 
 		done := make(chan struct{})
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			close(done)
 			return nil
 		})
@@ -495,7 +496,7 @@ func TestConsumer(t *testing.T) {
 
 		var handlerCalls atomic.Int64
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			handlerCalls.Add(1)
 			return nil
 		})
@@ -527,11 +528,14 @@ func TestConsumer(t *testing.T) {
 		var gotKeys []string
 		var gotBodies [][]byte
 		done := make(chan struct{})
-		h := func(msgs []Source) error {
+		h := func(msgs []scan.Source) error {
 			require.Len(t, msgs, 2)
 			for _, m := range msgs {
-				gotKeys = append(gotKeys, m.RoutingKey())
+				gotKeys = append(gotKeys, Subjects().Of(m))
 				gotBodies = append(gotBodies, m.Body())
+				s := session.FromContext(m.Context())
+				require.NotNil(t, s)
+				require.Empty(t, s.Body, "a batched message put its body in the session")
 			}
 			close(done)
 			return nil
@@ -590,7 +594,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		handled := make(chan struct{})
 		//nolint:errcheck
-		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
+		cons.SetHandler(testRecover{}.Wrap(func(msgs []scan.Source) error {
 			close(handled)
 			panic("some error")
 		}))
@@ -629,7 +633,7 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		handled := make(chan struct{})
 		//nolint:errcheck
-		cons.SetHandler(testRecover{}.Wrap(func(msgs []Source) error {
+		cons.SetHandler(testRecover{}.Wrap(func(msgs []scan.Source) error {
 			close(handled)
 			panic("boom")
 		}))
@@ -670,9 +674,9 @@ func TestConsumer(t *testing.T) {
 		require.NoError(t, cons.Bind("rk"))
 		require.NoError(t, cons.SetReconnectInterval(time.Hour))
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			require.Len(t, msgs, 1)
-			require.Equal(t, "rk", msgs[0].RoutingKey())
+			require.Equal(t, "rk", Subjects().Of(msgs[0]))
 			require.Equal(t, []byte("only"), msgs[0].Body())
 			close(done)
 			return nil
@@ -726,9 +730,9 @@ func TestConsumer(t *testing.T) {
 
 		done := make(chan struct{})
 		//nolint:errcheck
-		cons.SetHandler(func(msgs []Source) error {
+		cons.SetHandler(func(msgs []scan.Source) error {
 			require.Len(t, msgs, 1)
-			require.Equal(t, "rk0", msgs[0].RoutingKey())
+			require.Equal(t, "rk0", Subjects().Of(msgs[0]))
 			require.Equal(t, []byte("p0"), msgs[0].Body())
 			s := session.FromContext(msgs[0].Context())
 			require.NotNil(t, s)

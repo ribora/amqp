@@ -1,6 +1,7 @@
 package interceptor
 
 import (
+	"context"
 	"time"
 
 	"gitlab.com/gorib/amqp"
@@ -8,6 +9,7 @@ import (
 	"gitlab.com/gorib/failure"
 	"gitlab.com/gorib/hilton"
 	"gitlab.com/gorib/session"
+	"gitlab.com/gorib/whisk/scan"
 )
 
 const instrumentationName = "gitlab.com/gorib/amqp"
@@ -57,15 +59,22 @@ func errorType(err error) string {
 	return otherErrorType
 }
 
+func withContext(ctx context.Context, src scan.Source) scan.Source {
+	if s, ok := src.(amqp.Source); ok {
+		return s.WithContext(ctx)
+	}
+	return src
+}
+
 // Only the last message becomes the parent, so the rest of a batch reach the
 // span as links — otherwise their traces lose the connection entirely.
-func batchLinks(msgs []amqp.Source) []hilton.Link {
+func batchLinks(msgs []scan.Source) []hilton.Link {
 	if len(msgs) < 2 {
 		return nil
 	}
 	links := make([]hilton.Link, 0, len(msgs)-1)
 	for i, msg := range msgs[:len(msgs)-1] {
-		sc, ok := hilton.ParseTraceparent(msg.Header(model.TraceparentHeader))
+		sc, ok := hilton.ParseTraceparent(msg.Lookup("header", model.TraceparentHeader))
 		if !ok {
 			continue
 		}
@@ -77,8 +86,8 @@ func batchLinks(msgs []amqp.Source) []hilton.Link {
 	return links
 }
 
-func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.Source) error {
-	return func(msgs []amqp.Source) error {
+func (t *tracingMW) Wrap(next func(msgs []scan.Source) error) func(msgs []scan.Source) error {
+	return func(msgs []scan.Source) error {
 		if len(msgs) == 0 {
 			return next(msgs)
 		}
@@ -88,7 +97,7 @@ func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.S
 			ctx = t.provider.Propagator().Extract(ctx, amqp.TableCarrier(headers))
 		}
 
-		routingKey := msgs[len(msgs)-1].RoutingKey()
+		routingKey := amqp.RoutingKey(msgs[len(msgs)-1])
 
 		ctx, span := t.tracer.Start(ctx, "amqp process",
 			hilton.WithSpanKind(hilton.SpanKindConsumer),
@@ -105,7 +114,7 @@ func (t *tracingMW) Wrap(next func(msgs []amqp.Source) error) func(msgs []amqp.S
 		}
 
 		for i := range msgs {
-			msgs[i] = msgs[i].WithContext(ctx)
+			msgs[i] = withContext(ctx, msgs[i])
 		}
 
 		activeAttrs := []hilton.Attribute{
