@@ -24,7 +24,7 @@ c, err := amqp.NewConsumer(dsn, "orders", "orders.pricing",
 )
 _ = c.Bind("order.created")
 _ = c.Bind("order.updated")
-_ = c.SetHandler(func(msgs []amqp.Source) error { … })
+_ = c.SetHandler(func(msgs []scan.Source) error { … })
 err = c.Consume(ctx)
 ```
 
@@ -104,8 +104,9 @@ routing them.
 
 ## Source
 
-A delivery reaches the handler as a `Source`, which is a `whisk/scan.Source`
-plus the AMQP specifics:
+The handler signature is broker-agnostic — `[]scan.Source` — but every delivery
+this consumer hands it is a `Source`, which is a `whisk/scan.Source` plus the
+AMQP specifics:
 
 ```go
 type Source interface {
@@ -124,7 +125,31 @@ an HTTP request. The scopes `whisk` can address are `header`, `routing-key`
 and `exchange`; a non-string header value reads as empty.
 
 `WithContext` returns a copy — interceptors replace the sources in the slice
-rather than mutating them.
+rather than mutating them. A source that came from another adapter is left
+alone, since only this package knows how to rebind its context.
+
+The session the consumer puts on each context carries the routing key, the
+correlation id and the user headers. The body goes with it **only when the page
+held one message** — `pry` reports a session as the request payload to Sentry, and
+one message that failed is exactly the payload worth having, while a page of five
+hundred would send five hundred invoices to report one error, none of which is
+known to be the cause. The handler always has the body on the source.
+
+## Subjects
+
+`Subjects()` is the routing half of the same story: a consumer tool that does
+not know the broker asks it which key a delivery carries and what a pattern
+matches.
+
+```go
+amqp.Subjects().Of(src)                      // the routing key, via the scan scope
+amqp.Subjects().Match("order.*", "order.created")
+amqp.Subjects().Overlap("order.*", "*.created")
+```
+
+`Match` and `Overlap` are AMQP topic semantics: `*` is one word, `#` is zero or
+more. `Overlap` reports whether some key would match both patterns — two
+handlers bound to overlapping patterns are a wiring mistake, not a fan-out.
 
 ## Interceptors
 
