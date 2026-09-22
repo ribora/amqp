@@ -154,14 +154,14 @@ handlers bound to overlapping patterns are a wiring mistake, not a fan-out.
 ## Interceptors
 
 The consumer itself knows nothing about middleware: it calls one handler. The
-chain is assembled by whoever wires it (waffle's scribus tool collects them by
-DI tag), sorted by `Order()` ascending, smaller being further out.
+chain is assembled by whoever wires it (waffle's scribus tool lists them), first
+being furthest out. The three that ship belong in this order:
 
-| Middleware | Order | What |
-|---|---|---|
-| `interceptor.NewTracing` | 100 | extracts trace context from headers, starts a `CONSUMER` span, puts the provider in ctx, records `messaging.process.duration`, `messaging.client.consumed.messages` and `messaging.process.active` |
-| `interceptor.NewLog` | 400 | puts the logger in ctx, traces every message body in, logs a handler error out |
-| `interceptor.NewRecover` | 500 | `failure.Catch` around the handler, so a panic becomes an error the consumer can nack |
+| Middleware | What |
+|---|---|
+| `interceptor.NewTracing` | extracts trace context from headers, starts a `CONSUMER` span, puts the provider in ctx, records `messaging.process.duration`, `messaging.client.consumed.messages` and `messaging.process.active` |
+| `interceptor.NewLog` | puts the logger in ctx, traces every message body in, logs a handler error out |
+| `interceptor.NewRecover` | `failure.Catch` around the handler, so a panic becomes an error the consumer can nack |
 
 Recovery is innermost on purpose: the panic has to become an error before
 tracing and logging see the result, otherwise the span would end unrecorded

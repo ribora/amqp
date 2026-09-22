@@ -16,9 +16,6 @@ type logMW struct {
 	logger pry.Logger
 }
 
-func (logMW) Name() string { return "log" }
-func (logMW) Order() int   { return 400 }
-
 func (l *logMW) Wrap(next func(msgs []scan.Source) error) func(msgs []scan.Source) error {
 	return func(msgs []scan.Source) error {
 		for i := range msgs {

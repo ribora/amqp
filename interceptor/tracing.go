@@ -44,9 +44,6 @@ type tracingMW struct {
 	active   hilton.UpDownCounter
 }
 
-func (tracingMW) Name() string { return "tracing" }
-func (tracingMW) Order() int   { return 100 }
-
 const otherErrorType = "_OTHER"
 
 func errorType(err error) string {

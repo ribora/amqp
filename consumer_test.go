@@ -58,9 +58,6 @@ func nextTransport(t *testing.T, created <-chan *mockTransport, expected string)
 
 type testRecover struct{}
 
-func (testRecover) Name() string { return "recover" }
-func (testRecover) Order() int   { return 500 }
-
 func (testRecover) Wrap(next func(msgs []scan.Source) error) func(msgs []scan.Source) error {
 	return func(msgs []scan.Source) (err error) {
 		defer func() {
