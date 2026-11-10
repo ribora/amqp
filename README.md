@@ -2,7 +2,7 @@
 
 RabbitMQ for gorib services: a consumer that hands batches of messages to one
 handler, a publisher that reuses its connection, and an interceptor chain
-around both. Session and W3C trace context travel in the message headers, so a
+around the consumer's handler. Session and W3C trace context travel in the message headers, so a
 delivery is a continuation of the HTTP request that caused it.
 
 For the service side — declaring handlers, binding them to routing keys,
@@ -11,7 +11,7 @@ running the consumer as a command — see `docs/tools/scribus.md` in
 
 | Path | What's in it |
 |---|---|
-| `.` | consumer, publisher, transport, `Source`, header carrier |
+| `.` | consumer, publisher, transport, `Source`, header carrier, test stand-ins |
 | `interceptor` | tracing, logging and recovery middlewares for the consumer |
 | `model` | header names and queue-argument builder |
 
@@ -214,6 +214,28 @@ to the call, so the caller's own next outgoing call is still parented to the
 request. Session fields go out as `User-Agent`, `Accept-Language`, `Source-Ip`,
 and the trace context as `traceparent`, `tracestate` (see `model`), with the
 correlation id in AMQP's own `CorrelationId` property.
+
+## Testing
+
+A test that asserts on what a service published uses the recorder, not a no-op.
+It and the real publisher both satisfy `amqp.Publisher`:
+
+```go
+rec := amqp.NewPublisherRecorder()
+// … run the code under test with rec …
+sent := rec.WithKey("order.created")    // the Published{Key, Document} under that key
+all := rec.Published()                  // everything, in order
+rec.FailWith(errors.New("broker down")) // every later Publish returns it
+rec.Reset()                             // clears the record and the failure
+```
+
+The recorder has no exchange: that is fixed in `NewPublisher`. For a handler
+called directly, `Delivery.Source` builds the `Source` it receives, answering
+the same scopes as a delivered message:
+
+```go
+src := amqp.Delivery{RoutingKey: "order.created", Body: body}.Source(ctx)
+```
 
 ## What it does not do
 
