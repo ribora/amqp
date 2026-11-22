@@ -1,6 +1,6 @@
-# gorib/amqp
+# ribora/amqp
 
-RabbitMQ for gorib services: a consumer that hands batches of messages to one
+RabbitMQ for ribora services: a consumer that hands batches of messages to one
 handler, a publisher that reuses its connection, and an interceptor chain
 around the consumer's handler. Session and W3C trace context travel in the message headers, so a
 delivery is a continuation of the HTTP request that caused it.
