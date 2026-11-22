@@ -3,7 +3,7 @@ package amqp
 import (
 	"time"
 
-	"gitlab.com/gorib/amqp/model"
+	"github.com/ribora/amqp/model"
 )
 
 type QueueConfig = model.Queue

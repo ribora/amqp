@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/gorib/amqp/model"
+	"github.com/ribora/amqp/model"
 )
 
 // The table is declared to the broker, where a wrong or extra argument fails

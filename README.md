@@ -7,7 +7,7 @@ delivery is a continuation of the HTTP request that caused it.
 
 For the service side — declaring handlers, binding them to routing keys,
 running the consumer as a command — see `docs/tools/scribus.md` in
-`gitlab.com/gorib/waffle`. This file documents the package itself.
+`github.com/ribora/waffle`. This file documents the package itself.
 
 | Path | What's in it |
 |---|---|

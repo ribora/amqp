@@ -10,9 +10,9 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	"gitlab.com/gorib/amqp/model"
-	"gitlab.com/gorib/session"
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/amqp/model"
+	"github.com/ribora/session"
+	"github.com/ribora/whisk/scan"
 )
 
 var (

@@ -1,8 +1,8 @@
 package interceptor
 
 import (
-	"gitlab.com/gorib/failure"
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/failure"
+	"github.com/ribora/whisk/scan"
 )
 
 func NewRecover() *recoverMW {

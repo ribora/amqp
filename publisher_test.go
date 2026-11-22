@@ -10,8 +10,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/gorib/amqp/model"
-	"gitlab.com/gorib/session"
+	"github.com/ribora/amqp/model"
+	"github.com/ribora/session"
 )
 
 func TestPublisher(t *testing.T) {

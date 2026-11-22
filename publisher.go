@@ -10,12 +10,12 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	"gitlab.com/gorib/amqp/model"
-	"gitlab.com/gorib/hilton"
-	"gitlab.com/gorib/session"
+	"github.com/ribora/amqp/model"
+	"github.com/ribora/hilton"
+	"github.com/ribora/session"
 )
 
-const instrumentationName = "gitlab.com/gorib/amqp"
+const instrumentationName = "github.com/ribora/amqp"
 
 // Some bound is needed: on a connection that dies without closing, nothing
 // resolves the confirmation until the heartbeat expires, a minute and more.

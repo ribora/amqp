@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab.com/gorib/amqp"
-	"gitlab.com/gorib/failure"
-	"gitlab.com/gorib/hilton"
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/amqp"
+	"github.com/ribora/failure"
+	"github.com/ribora/hilton"
+	"github.com/ribora/whisk/scan"
 )
 
 const processDuration = "messaging.process.duration"

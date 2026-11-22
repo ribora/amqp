@@ -4,15 +4,15 @@ import (
 	"context"
 	"time"
 
-	"gitlab.com/gorib/amqp"
-	"gitlab.com/gorib/amqp/model"
-	"gitlab.com/gorib/failure"
-	"gitlab.com/gorib/hilton"
-	"gitlab.com/gorib/session"
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/amqp"
+	"github.com/ribora/amqp/model"
+	"github.com/ribora/failure"
+	"github.com/ribora/hilton"
+	"github.com/ribora/session"
+	"github.com/ribora/whisk/scan"
 )
 
-const instrumentationName = "gitlab.com/gorib/amqp"
+const instrumentationName = "github.com/ribora/amqp"
 
 // NewTracing extracts incoming W3C trace context from AMQP headers, starts a
 // CONSUMER-kind span, injects provider into ctx, and mirrors traceparent into

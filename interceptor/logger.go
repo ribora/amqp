@@ -3,9 +3,9 @@ package interceptor
 import (
 	"fmt"
 
-	"gitlab.com/gorib/amqp"
-	"gitlab.com/gorib/pry"
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/amqp"
+	"github.com/ribora/pry"
+	"github.com/ribora/whisk/scan"
 )
 
 func NewLog(logger pry.Logger) *logMW {

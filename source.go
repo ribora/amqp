@@ -5,7 +5,7 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/whisk/scan"
 )
 
 type Source interface {

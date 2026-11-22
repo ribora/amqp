@@ -3,7 +3,7 @@ package amqp
 import (
 	"strings"
 
-	"gitlab.com/gorib/whisk/scan"
+	"github.com/ribora/whisk/scan"
 )
 
 func Subjects() subjects { return subjects{} }
